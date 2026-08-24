@@ -1,23 +1,36 @@
 # ChatOnYou Trade
 
-Client-side, single-file paper-trading terminal. No backend, no real-money
-execution — it simulates trades against live public market data entirely in
-the browser and keeps state in `localStorage`.
+ChatOnYou Trade is a full-stack AI-assisted paper-trading application built
+with the Next.js App Router. It provides live crypto signals, paper accounts,
+risk controls, analytics, backtesting, and optional Binance Spot Testnet
+execution. It does not place real-money orders.
 
-- **`index.html`** — current version. Supports Crypto (Binance public
-  market data, no key needed) and USA Stocks (Alpaca IEX, requires a
-  user-supplied market-data key/secret kept only in the open tab).
-- **`archive/index-v1-crypto-only.html`** — earlier crypto-only version,
-  kept for reference.
+## Production
 
-Production: https://chatonyou.com
+- Canonical application: https://chatonyou.com
+- Vercel mirror: https://chatonyoutrade.vercel.app
 
-## How it works
+The canonical application runs on OpenAI Sites/Cloudflare because its durable
+paper accounts use D1, its authenticated application uses Sign in with
+ChatGPT, and its Testnet credential vault uses a Cloudflare runtime secret.
+The Vercel deployment serves the public Next.js experience and redirects
+authenticated trading and API routes to the canonical application.
 
-An autopilot scores each tracked asset every few seconds using EMA trend,
-RSI(14), momentum, and volatility on live 1-minute candles, and opens a
-single virtual long position when the score clears a configurable
-threshold. Position sizing, risk-per-trade, max allocation, and daily max
-loss are all user-configurable risk controls. All fills are simulated with
-an estimated fee + slippage; **no order is ever sent to an exchange or
-broker.**
+## Local development
+
+Prerequisites: Node.js 22.13 or newer.
+
+```bash
+npm ci
+npm run dev
+```
+
+The Sites build is produced with `npm run build`. Vercel uses the build command
+defined in `vercel.json`.
+
+## Safety
+
+- Paper trading is the default.
+- Exchange integration is restricted to Binance Spot Testnet.
+- Testnet credentials are encrypted before storage.
+- No API keys or runtime secrets belong in this repository.
