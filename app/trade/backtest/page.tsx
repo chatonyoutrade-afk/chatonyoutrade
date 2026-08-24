@@ -1,0 +1,52 @@
+"use client";
+import { useMemo,useState } from "react";
+
+const strategyResults={
+ trend:{return:"+11.8%",profit:"+₹1,180",win:"62.4%",trades:48,drawdown:"-3.2%",factor:"1.76",points:"0,125 55,119 110,99 165,108 220,82 275,88 330,60 385,71 440,43 495,51 550,27 605,36 660,15"},
+ breakout:{return:"+16.4%",profit:"+₹1,640",win:"57.8%",trades:71,drawdown:"-5.1%",factor:"1.91",points:"0,130 60,112 120,120 180,80 240,95 300,69 360,82 420,45 480,59 540,22 600,38 660,10"},
+ defensive:{return:"+7.6%",profit:"+₹760",win:"69.1%",trades:29,drawdown:"-1.8%",factor:"1.58",points:"0,124 70,117 140,103 210,98 280,80 350,73 420,55 490,47 560,29 630,20"},
+};
+const recent=[
+ {name:"Trend Rider · BTC",period:"Jan–Aug 2026",result:"+11.8%",drawdown:"-3.2%",status:"Completed"},
+ {name:"Defensive Swing · ETH",period:"90 days",result:"+6.2%",drawdown:"-1.4%",status:"Completed"},
+ {name:"Breakout Scout · SOL",period:"180 days",result:"+14.7%",drawdown:"-5.6%",status:"Completed"},
+];
+
+export default function Backtest(){
+ const [strategy,setStrategy]=useState<keyof typeof strategyResults>("trend"),[market,setMarket]=useState("BTC/USDT"),[timeframe,setTimeframe]=useState("15m"),[period,setPeriod]=useState("90D"),[capital,setCapital]=useState(10000),[risk,setRisk]=useState(1),[running,setRunning]=useState(false),[complete,setComplete]=useState(true),[toast,setToast]=useState(""),[liveResult,setLiveResult]=useState<typeof strategyResults.trend|null>(null),[recentTests,setRecentTests]=useState(recent);
+ const result=liveResult||strategyResults[strategy];
+ const name=useMemo(()=>strategy==="trend"?"Trend Rider":strategy==="breakout"?"Breakout Scout":"Defensive Swing",[strategy]);
+ const openRecent=(item:typeof recent[number])=>{const next=item.name.startsWith("Defensive")?"defensive":item.name.startsWith("Breakout")?"breakout":"trend";setStrategy(next);setMarket(item.name.endsWith("ETH")?"ETH/USDT":item.name.endsWith("SOL")?"SOL/USDT":"BTC/USDT");setPeriod(item.period.includes("90")?"90D":item.period.includes("180")?"1Y":"ALL");setLiveResult(null);setToast(`${item.name} result loaded`);window.scrollTo({top:0,behavior:"smooth"});setTimeout(()=>setToast(""),2400)};
+ const run=async()=>{setRunning(true);setComplete(false);try{const response=await fetch(`/api/backtest?asset=${market.split("/")[0]}&capital=${capital}&risk=${risk}`,{cache:"no-store"});const data=await response.json();if(!response.ok)throw new Error(data.error||"Backtest unavailable");setLiveResult(data);setToast("Backtest completed on live Binance history")}catch(reason){setToast(reason instanceof Error?reason.message:"Backtest unavailable")}finally{setRunning(false);setComplete(true);setTimeout(()=>setToast(""),2400)}};
+ return <main className="backtest-shell">
+  <header className="ai-dash-top"><a className="terminal-logo" href="/"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><div className="ai-dash-title"><b>Backtest Lab</b><span><i/> Binance historical candles</span></div><div className="ai-dash-actions"><button><small>PAPER CAPITAL</small><b>₹{capital.toLocaleString("en-IN")}</b></button><a href="/trade/profile">NS</a></div></header>
+  <div className="ai-dash-layout"><aside className="ai-dash-nav"><div><a href="/trade"><i>↗</i><span>Trade</span></a><a href="/trade/ai"><i>✦</i><span>AI Trader</span></a><a href="/trade/bots"><i>◉</i><span>Bots</span></a><a href="/trade/wallet"><i>W</i><span>Wallet</span></a><a href="/trade/portfolio"><i>◒</i><span>Portfolio</span></a><a href="/trade/history"><i>H</i><span>History</span></a><a href="/trade/analytics"><i>⌁</i><span>Analytics</span></a><a className="active" href="/trade/backtest"><i>◫</i><span>Backtest</span></a></div><a href="/trade/settings"><i>⚙</i><span>Settings</span></a></aside>
+   <section className="backtest-main">
+    <div className="backtest-head"><div><span>STRATEGY TESTING · PAPER ONLY</span><h1>Test before you trade.</h1><p>Replay a strategy on historical demo data and inspect its risk.</p></div><div><span><i/>No exchange connected</span><button onClick={run} disabled={running}>{running?<><i className="run-spinner"/> Running test…</>:<>Run backtest <b>→</b></>}</button></div></div>
+    <section className="backtest-workspace">
+     <aside className="test-config"><header><div><span>TEST SETUP</span><h2>Strategy settings</h2></div><button onClick={()=>{setStrategy("trend");setMarket("BTC/USDT");setRisk(1);setCapital(10000)}}>Reset</button></header>
+      <label>Strategy<select value={strategy} onChange={e=>setStrategy(e.target.value as keyof typeof strategyResults)}><option value="trend">Trend Rider</option><option value="breakout">Breakout Scout</option><option value="defensive">Defensive Swing</option></select></label>
+      <div className="config-split"><label>Market<select value={market} onChange={e=>setMarket(e.target.value)}><option>BTC/USDT</option><option>ETH/USDT</option><option>SOL/USDT</option><option>BNB/USDT</option></select></label><label>Timeframe<select value={timeframe} onChange={e=>setTimeframe(e.target.value)}><option>15m</option><option>1h</option><option>4h</option><option>1d</option></select></label></div>
+      <label>Test period<div className="period-switch">{["30D","90D","1Y","ALL"].map(item=><button className={period===item?"active":""} onClick={()=>setPeriod(item)} key={item}>{item}</button>)}</div></label>
+      <label>Starting capital<span className="capital-input">₹<input type="number" value={capital} onChange={e=>setCapital(Number(e.target.value))}/></span></label>
+      <label className="risk-slider">Risk per trade <b>{risk}%</b><input type="range" min=".5" max="3" step=".5" value={risk} onChange={e=>setRisk(Number(e.target.value))}/><span><small>Conservative 0.5%</small><small>Aggressive 3%</small></span></label>
+      <div className="test-rules"><span><i>✓</i>Stop-loss on every trade</span><span><i>✓</i>Trading fees included</span><span><i>✓</i>No future data leakage</span></div>
+      <button className="mobile-run" onClick={run} disabled={running}>{running?"Running test…":"Run backtest →"}</button>
+     </aside>
+     <div className="test-results">
+      {running&&<div className="test-running"><div className="scan-orbit"><i>✦</i><b/><b/></div><h2>Replaying market data</h2><p>{market} · {timeframe} candles · {period}</p><div><i/></div><span>Applying entries, exits and risk rules…</span></div>}
+      {!running&&complete&&<><header><div><span>LATEST RESULT</span><h2>{name} · {market}</h2><p>{period} · {timeframe} · ₹{capital.toLocaleString("en-IN")} starting capital</p></div><i>Completed</i></header>
+       <div className="result-metrics"><article className="main-result"><span>NET RETURN</span><strong>{result.return}</strong><small>{result.profit} simulated profit</small></article><article><span>WIN RATE</span><strong>{result.win}</strong><small>{result.trades} closed trades</small></article><article><span>MAX DRAWDOWN</span><strong>{result.drawdown}</strong><small>Peak-to-trough</small></article><article><span>PROFIT FACTOR</span><strong>{result.factor}</strong><small>Gross profit ÷ loss</small></article></div>
+       <article className="test-chart-card"><header><div><span>EQUITY CURVE</span><b>₹{Math.round(capital*(1+Number(result.return.replace(/[+%]/g,""))/100)).toLocaleString("en-IN")}</b></div><div><span>Buy &amp; hold <i>+6.3%</i></span><span>Strategy <i>{result.return}</i></span></div></header><div className="test-chart"><div><i/><i/><i/><i/></div><svg viewBox="0 0 660 150" preserveAspectRatio="none" aria-label="Backtest equity curve"><defs><linearGradient id="testArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8fa2ff" stopOpacity=".22"/><stop offset="1" stopColor="#8fa2ff" stopOpacity="0"/></linearGradient></defs><polygon points={result.points+" 660,150 0,150"} fill="url(#testArea)"/><polyline points={result.points} fill="none" stroke="#91a3ff" strokeWidth="3" vectorEffect="non-scaling-stroke"/></svg><b>{result.return}</b></div><footer><span>Start</span><span>25%</span><span>50%</span><span>75%</span><span>End</span></footer></article>
+       <div className="result-breakdown"><article><header><h3>Trade outcomes</h3><span>{result.trades} total</span></header><div className="outcome-ring" style={{background:"conic-gradient(#53e99e 0 "+parseFloat(result.win)+"%,#ff737e "+parseFloat(result.win)+"% 100%)"}}><div><b>{result.win}</b><small>won</small></div></div><footer><span><i/>Winning trades<b>{Math.round(result.trades*parseFloat(result.win)/100)}</b></span><span><i/>Losing trades<b>{result.trades-Math.round(result.trades*parseFloat(result.win)/100)}</b></span></footer></article><article className="test-insights"><header><h3>AI test insights</h3><span>✦ Explain</span></header><ul><li><i>✓</i><span><b>Strong trend capture</b>Most profit came from confirmed multi-candle moves.</span></li><li><i>!</i><span><b>Sideways weakness</b>False entries increased during low-volume periods.</span></li><li><i>◇</i><span><b>Risk stayed controlled</b>Protective stops prevented larger individual losses.</span></li></ul><a href="/trade/bot-import">Import into paper bot →</a></article></div>
+      </>}
+     </div>
+    </section>
+    <section className="recent-tests"><header><div><h2>Recent tests</h2><p>Compare earlier paper strategy experiments.</p></div><button disabled={!recentTests.length} onClick={()=>{setRecentTests([]);setToast("Backtest history cleared")}}>Clear history</button></header><div>{recentTests.length?<><div className="recent-labels"><span>STRATEGY</span><span>PERIOD</span><span>RETURN</span><span>DRAWDOWN</span><span>STATUS</span><span/></div>{recentTests.map(item=><div key={item.name}><strong>{item.name}</strong><span>{item.period}</span><b>{item.result}</b><em>{item.drawdown}</em><i>{item.status}</i><button onClick={()=>openRecent(item)} aria-label={`Open ${item.name} result`}>›</button></div>)}</>:<div className="recent-empty"><b>No saved test history</b><span>Run a backtest to generate a new comparison.</span></div>}</div></section>
+    <p className="ai-data-note">Backtest uses Binance public 15-minute candles with simulated fees · Historical results do not guarantee future returns</p>
+   </section>
+  </div>
+  {toast&&<div className="toast"><span>✓</span>{toast}</div>}
+  <nav className="ai-mobile-nav"><a href="/trade"><i>↗</i>Trade</a><a href="/trade/bots"><i>◉</i>Bots</a><a href="/trade/analytics"><i>⌁</i>Stats</a><a className="active" href="/trade/backtest"><i>◫</i>Test</a><a href="/trade/settings"><i>⚙</i>Settings</a></nav>
+ </main>
+}

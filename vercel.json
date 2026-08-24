@@ -1,0 +1,19 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "npm ci --no-audit --no-fund",
+  "buildCommand": "npx next build",
+  "redirects": [
+    { "source": "/trade", "destination": "https://chatonyou.com/trade", "permanent": false },
+    { "source": "/trade/:path*", "destination": "https://chatonyou.com/trade/:path*", "permanent": false },
+    { "source": "/api/:path*", "destination": "https://chatonyou.com/api/:path*", "permanent": false },
+    { "source": "/login", "destination": "https://chatonyou.com/login", "permanent": false },
+    { "source": "/create-account", "destination": "https://chatonyou.com/create-account", "permanent": false },
+    { "source": "/setup", "destination": "https://chatonyou.com/setup", "permanent": false },
+    { "source": "/kyc", "destination": "https://chatonyou.com/kyc", "permanent": false },
+    { "source": "/kyc/:path*", "destination": "https://chatonyou.com/kyc/:path*", "permanent": false },
+    { "source": "/signin-with-chatgpt", "destination": "https://chatonyou.com/signin-with-chatgpt", "permanent": false },
+    { "source": "/signout-with-chatgpt", "destination": "https://chatonyou.com/signout-with-chatgpt", "permanent": false },
+    { "source": "/callback", "destination": "https://chatonyou.com/callback", "permanent": false }
+  ]
+}
