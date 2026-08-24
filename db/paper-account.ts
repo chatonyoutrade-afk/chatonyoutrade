@@ -1,8 +1,15 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "./index";
-import { aiDecisions, paperAccounts, paperSettings, paperTrades } from "./schema";
+import { aiDecisions, kycApplications, paperAccounts, paperSettings, paperTrades } from "./schema";
+
+export async function requireApprovedKyc(email:string){
+ const [application]=await getDb().select({status:kycApplications.status}).from(kycApplications).where(eq(kycApplications.userEmail,email)).limit(1);
+ if(application?.status!=="approved")throw new Error("KYC approval is required before paper-account activation");
+ return application;
+}
 
 export async function ensurePaperAccount(email:string,displayName:string){
+ await requireApprovedKyc(email);
  const db=getDb(),now=Date.now();
  await db.insert(paperAccounts).values({userEmail:email,displayName,balancePaise:1000000,startingBalancePaise:1000000,mode:"copilot",createdAt:now,updatedAt:now}).onConflictDoNothing();
  await db.insert(paperSettings).values({userEmail:email,capitalPaise:1000000,maxRiskPct:1,dailyLossPct:3,maxPositions:2,minConfidence:80,stopLossRequired:true,takeProfitRequired:true,dailyStopRequired:true,volatilityProtection:true,tradeAlerts:true,aiAlerts:true,lossAlerts:true,weeklyReport:false,updatedAt:now}).onConflictDoNothing();

@@ -36,6 +36,13 @@
       "when": 1787265096721,
       "tag": "0004_known_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787613245742,
+      "tag": "0005_slim_firedrake",
+      "breakpoints": true
     }
   ]
 }

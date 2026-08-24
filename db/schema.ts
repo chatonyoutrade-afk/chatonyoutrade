@@ -1,4 +1,45 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+
+export const kycApplications = sqliteTable("kyc_applications", {
+  id: text("id").primaryKey(),
+  reference: text("reference").notNull(),
+  userEmail: text("user_email").notNull(),
+  userDisplayName: text("user_display_name").notNull(),
+  fullName: text("full_name").notNull(),
+  birthYear: integer("birth_year").notNull(),
+  nationality: text("nationality").notNull(),
+  panLast4: text("pan_last4").notNull(),
+  mobileLast4: text("mobile_last4").notNull(),
+  city: text("city").notNull(),
+  state: text("state").notNull(),
+  pincode: text("pincode").notNull(),
+  idType: text("id_type").notNull(),
+  evidenceSummary: text("evidence_summary").notNull(),
+  status: text("status").notNull().default("pending"),
+  riskLevel: text("risk_level").notNull().default("unrated"),
+  reviewNote: text("review_note"),
+  reviewChecks: text("review_checks").notNull().default("[]"),
+  reviewedBy: text("reviewed_by"),
+  submittedAt: integer("submitted_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  reviewedAt: integer("reviewed_at"),
+}, (table) => [
+  uniqueIndex("idx_kyc_applications_user_email").on(table.userEmail),
+  uniqueIndex("idx_kyc_applications_reference").on(table.reference),
+  index("idx_kyc_applications_status_updated").on(table.status, table.updatedAt),
+]);
+
+export const kycReviewEvents = sqliteTable("kyc_review_events", {
+  id: text("id").primaryKey(),
+  applicationId: text("application_id").notNull(),
+  actorEmail: text("actor_email").notNull(),
+  action: text("action").notNull(),
+  note: text("note"),
+  checks: text("checks").notNull().default("[]"),
+  createdAt: integer("created_at").notNull(),
+}, (table) => [
+  index("idx_kyc_review_events_application_created").on(table.applicationId, table.createdAt),
+]);
 
 export const paperAccounts = sqliteTable("paper_accounts", {
   userEmail: text("user_email").primaryKey(),

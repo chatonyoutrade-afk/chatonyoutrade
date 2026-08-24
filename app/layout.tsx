@@ -5,6 +5,7 @@ import "./flow-reference.css";
 import "./public-info.css";
 import "./kyc.css";
 import "./kyc-status.css";
+import "./admin-kyc.css";
 import "./first-trade.css";
 import "./notifications.css";
 import "./support.css";

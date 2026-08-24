@@ -1,63 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-type VerificationState = "review" | "action" | "verified";
+type KycApplication = {
+  reference: string; userEmail: string; fullName: string; nationality: string; panLast4: string; mobileLast4: string; city: string; state: string; idType: string;
+  status: "pending" | "action_required" | "approved" | "rejected"; riskLevel: string; reviewNote: string | null; submittedAt: number; reviewedAt: number | null;
+};
 
 const statusContent = {
-  review: {
-    icon: "⌁", eyebrow: "KYC UNDER REVIEW", title: "Verification in progress.", description: "Your KYC information has been received. Identity, address, selfie and bank-account checks are being reviewed.", badge: "Estimated review · 1–2 business days", action: "Refresh status", tone: "review",
-  },
-  action: {
-    icon: "!", eyebrow: "ACTION REQUIRED", title: "One document needs attention.", description: "The address proof could not be read clearly. Upload a recent, complete document to continue verification.", badge: "Account remains locked", action: "Update KYC document", tone: "action",
-  },
-  verified: {
-    icon: "✓", eyebrow: "KYC VERIFIED", title: "Identity verified.", description: "Your KYC checks are complete. You can now continue to paper-account setup and configure your safety limits.", badge: "Paper account eligible", action: "Continue account setup", tone: "verified",
-  },
+  pending: { icon: "⌁", eyebrow: "KYC UNDER REVIEW", title: "Compliance review in progress.", description: "NEOCRAFT LLP’s authorised reviewer must complete identity, sanctions and risk checks.", badge: "Account remains locked", action: "Refresh status", tone: "review" },
+  action_required: { icon: "!", eyebrow: "ACTION REQUIRED", title: "Your KYC needs an update.", description: "The reviewer needs corrected or clearer information before making a decision.", badge: "Account remains locked", action: "Update KYC", tone: "action" },
+  approved: { icon: "✓", eyebrow: "KYC APPROVED", title: "Identity review completed.", description: "Your KYC was approved by an authorised NEOCRAFT LLP reviewer. Paper-account setup is now available.", badge: "Paper account eligible", action: "Continue account setup", tone: "verified" },
+  rejected: { icon: "×", eyebrow: "KYC NOT APPROVED", title: "We could not approve this application.", description: "Review the reason below or contact support if this decision needs reconsideration.", badge: "Account remains locked", action: "Contact support", tone: "action" },
 } as const;
 
 export default function KycStatusPage() {
-  const [state, setState] = useState<VerificationState>("review");
+  const [application, setApplication] = useState<KycApplication | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [refreshed, setRefreshed] = useState(false);
-  const content = statusContent[state];
+  const load = useCallback(async () => {
+    setError("");
+    try { const response = await fetch("/api/kyc", { cache: "no-store" }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "KYC status is unavailable."); setApplication(data.application); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "KYC status is unavailable."); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
 
-  const primaryAction = () => {
-    if (state === "action") { window.location.href = "/kyc"; return; }
-    if (state === "verified") { window.location.href = "/setup"; return; }
-    setRefreshed(true);
-    window.setTimeout(() => setRefreshed(false), 2200);
-  };
+  if (loading) return <main className="system-state-shell compact"><a className="terminal-logo" href="/"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><section><div className="system-loader"><i/><i/><i/></div><span>CHECKING KYC STATUS</span><h1>Loading securely…</h1><p>Retrieving your latest compliance-review decision.</p></section></main>;
+  if (!application) return <main className="kyc-shell"><header className="kyc-top"><a href="/" className="kyc-logo"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>KYC Status</span><a href="/">×</a></header><section className="kyc-result"><div className="kyc-result-icon">1</div><span>NO APPLICATION YET</span><h1>Start your KYC.</h1><p>{error || "Submit the required verification information before paper-account activation."}</p><nav><a href="/kyc">Begin KYC</a><a href="/support">Get help</a></nav></section></main>;
+
+  const content = statusContent[application.status] ?? statusContent.pending;
+  const primaryAction = async () => { if (application.status === "action_required") { window.location.href = "/kyc"; return; } if (application.status === "approved") { window.location.href = "/setup"; return; } if (application.status === "rejected") { window.location.href = "/support"; return; } await load(); setRefreshed(true); window.setTimeout(() => setRefreshed(false), 2200); };
+  const submitted = new Date(application.submittedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+  const initials = application.fullName.split(/\s+/).slice(0, 2).map((item) => item[0]).join("").toUpperCase();
 
   return <main className="kyc-status-shell">
     <header className="kyc-top"><a href="/" className="kyc-logo"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>KYC Status</span><a href="/">×</a></header>
-    <section className={`kyc-status-hero ${content.tone}`}>
-      <div className="kyc-status-orb"><i>{content.icon}</i></div>
-      <span>{content.eyebrow}</span>
-      <h1>{content.title}</h1>
-      <p>{content.description}</p>
-      <em>{content.badge}</em>
-      <button type="button" onClick={primaryAction}>{content.action} <b>→</b></button>
-    </section>
-
-    <section className="kyc-status-body">
-      <div className="kyc-status-main">
-        <header><span>APPLICATION PROGRESS</span><b>Reference · KYC-DEMO-2026</b></header>
-        <div className="kyc-timeline">
-          <article className="done"><i>✓</i><div><b>KYC submitted</b><p>Personal details and verification evidence received.</p><small>25 Aug 2026 · 10:42 AM</small></div></article>
-          <article className="done"><i>✓</i><div><b>Basic checks complete</b><p>PAN format, contact details and document availability checked.</p><small>25 Aug 2026 · 10:43 AM</small></div></article>
-          <article className={state==="review"?"active":state==="action"?"attention":"done"}><i>{state==="review"?"⌁":state==="action"?"!":"✓"}</i><div><b>{state==="action"?"Document update required":"Identity verification"}</b><p>{state==="action"?"Upload a clearer address proof to restart this check.":state==="verified"?"Identity, address, selfie and bank name verified.":"Automated and provider verification is in progress."}</p><small>{state==="verified"?"Completed":"Current step"}</small></div></article>
-          <article className={state==="verified"?"done":""}><i>{state==="verified"?"✓":"4"}</i><div><b>KYC decision</b><p>{state==="verified"?"KYC approved for paper-account onboarding.":"Final status appears after all checks complete."}</p><small>{state==="verified"?"Verified":"Pending"}</small></div></article>
-        </div>
-      </div>
-
-      <aside className="kyc-status-side">
-        <section><span>CLIENT</span><div><i>NS</i><p><b>Demo client</b><small>Individual · India</small></p></div><dl><dt>PAN</dt><dd>Format checked</dd><dt>Identity proof</dt><dd>{state==="verified"?"Verified":"Received"}</dd><dt>Address proof</dt><dd>{state==="action"?"Update required":state==="verified"?"Verified":"In review"}</dd><dt>Selfie</dt><dd>{state==="verified"?"Verified":"Received"}</dd><dt>Bank name</dt><dd>{state==="verified"?"Matched":"In review"}</dd></dl></section>
-        <div className="kyc-status-lock"><i>◇</i><p><b>{state==="verified"?"Paper setup unlocked":"Account access locked"}</b><small>{state==="verified"?"Continue to select AI mode and safety limits.":"Trading access stays disabled until KYC is verified."}</small></p></div>
-      </aside>
-    </section>
-
-    <section className="kyc-state-preview"><span>DEMO STATUS PREVIEW</span><p>Preview the three client-facing outcomes.</p><div><button className={state==="review"?"active":""} onClick={()=>setState("review")}>Under review</button><button className={state==="action"?"active":""} onClick={()=>setState("action")}>Action required</button><button className={state==="verified"?"active":""} onClick={()=>setState("verified")}>Verified</button></div></section>
-    <footer className="kyc-status-footer"><p>This page shows a demo verification status. Production status must come from the approved KYC provider.</p><a href="/privacy">Privacy policy</a></footer>
-    {refreshed?<div className="toast"><span>✓</span>Status is already up to date</div>:null}
+    <section className={`kyc-status-hero ${content.tone}`}><div className="kyc-status-orb"><i>{content.icon}</i></div><span>{content.eyebrow}</span><h1>{content.title}</h1><p>{content.description}</p><em>{content.badge}</em><button type="button" onClick={primaryAction}>{content.action} <b>→</b></button></section>
+    <section className="kyc-status-body"><div className="kyc-status-main"><header><span>APPLICATION PROGRESS</span><b>Reference · {application.reference}</b></header><div className="kyc-timeline">
+      <article className="done"><i>✓</i><div><b>KYC submitted</b><p>Minimised identity and evidence-readiness metadata received.</p><small>{submitted}</small></div></article>
+      <article className="done"><i>✓</i><div><b>Basic validation complete</b><p>PAN format, age, contact and evidence checkpoints passed.</p><small>System validation</small></div></article>
+      <article className={application.status === "pending" ? "active" : application.status === "approved" ? "done" : "attention"}><i>{application.status === "pending" ? "⌁" : application.status === "approved" ? "✓" : "!"}</i><div><b>Authorised compliance review</b><p>{application.status === "pending" ? "Identity, sanctions and risk checks are pending." : application.reviewNote || "Reviewer decision recorded."}</p><small>{application.reviewedAt ? new Date(application.reviewedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Current step"}</small></div></article>
+      <article className={application.status === "approved" ? "done" : ""}><i>{application.status === "approved" ? "✓" : "4"}</i><div><b>Paper-account decision</b><p>{application.status === "approved" ? "KYC approved; setup is unlocked." : "Account remains locked until approval."}</p><small>{application.status === "approved" ? "Approved" : "Pending"}</small></div></article>
+    </div></div><aside className="kyc-status-side"><section><span>CLIENT</span><div><i>{initials || "CY"}</i><p><b>{application.fullName}</b><small>Individual · {application.nationality}</small></p></div><dl><dt>Email</dt><dd>{application.userEmail}</dd><dt>PAN</dt><dd>Ending {application.panLast4}</dd><dt>Mobile</dt><dd>Ending {application.mobileLast4}</dd><dt>Location</dt><dd>{application.city}, {application.state}</dd><dt>Identity type</dt><dd>{application.idType}</dd><dt>Risk rating</dt><dd>{application.riskLevel}</dd></dl></section><div className="kyc-status-lock"><i>◇</i><p><b>{application.status === "approved" ? "Paper setup unlocked" : "Account access locked"}</b><small>{application.status === "approved" ? "Continue to choose risk settings." : "Trading stays disabled until KYC approval."}</small></p></div></aside></section>
+    <footer className="kyc-status-footer"><p>Approval is recorded by an authorised NEOCRAFT LLP reviewer. FIU-IND does not approve individual customer applications.</p><a href="/privacy">Privacy policy</a></footer>
+    {refreshed ? <div className="toast"><span>✓</span>Status refreshed</div> : null}
   </main>;
 }
