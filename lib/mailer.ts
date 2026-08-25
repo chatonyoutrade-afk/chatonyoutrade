@@ -7,13 +7,25 @@ function read(key: string) {
   return (typeof workerValue === "string" ? workerValue : process.env[key] ?? "").trim();
 }
 
+function apiKey() {
+  return read("EMAIL_API_KEY") || read("RESEND_API_KEY");
+}
+
+function fromAddress() {
+  const configured = read("EMAIL_FROM");
+  if (configured) return configured;
+
+  const resendDomain = read("RESEND_EMAIL_DOMAIN");
+  return resendDomain ? `ChatOnYou <noreply@${resendDomain}>` : "";
+}
+
 export function mailerStatus() {
-  const apiKey = read("EMAIL_API_KEY");
-  const from = read("EMAIL_FROM");
+  const key = apiKey();
+  const from = fromAddress();
   return {
-    provider: read("EMAIL_PROVIDER") || (apiKey ? "resend" : ""),
-    configured: Boolean(apiKey && from),
-    missing: [!apiKey && "EMAIL_API_KEY", !from && "EMAIL_FROM"].filter(Boolean) as string[],
+    provider: read("EMAIL_PROVIDER") || (key ? "resend" : ""),
+    configured: Boolean(key && from),
+    missing: [!key && "EMAIL_API_KEY or RESEND_API_KEY", !from && "EMAIL_FROM or RESEND_EMAIL_DOMAIN"].filter(Boolean) as string[],
   };
 }
 
@@ -31,8 +43,8 @@ export async function sendMail(to: string, subject: string, text: string): Promi
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
-      headers: { authorization: `Bearer ${read("EMAIL_API_KEY")}`, "content-type": "application/json" },
-      body: JSON.stringify({ from: read("EMAIL_FROM"), to, subject, text }),
+      headers: { authorization: `Bearer ${apiKey()}`, "content-type": "application/json" },
+      body: JSON.stringify({ from: fromAddress(), to, subject, text }),
     });
     return response.ok;
   } catch {
