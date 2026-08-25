@@ -58,3 +58,12 @@ export async function verifyPassword(password: string, stored: { hash: string; s
   for (let index = 0; index < expected.length; index++) difference |= expected[index] ^ actual[index];
   return difference === 0;
 }
+
+// Burns the same work as a real verification. Sign-in calls this when no
+// account exists, so the response time does not reveal which addresses are
+// registered — the identical body and status are not enough on their own.
+export async function burnVerificationCost() {
+  const salt = new Uint8Array(SALT_BYTES);
+  await derive("", salt, configuredIterations());
+  return false;
+}

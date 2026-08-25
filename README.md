@@ -59,7 +59,7 @@ below belongs in this repository.
 | --- | --- |
 | `EXCHANGE_VAULT_KEY` | AES key for the Binance Testnet credential vault. |
 | `KYC_ADMIN_EMAILS` | **Required for admin access.** Comma-separated reviewer allowlist. There is no default: a reviewer address shipped in this repository would be a published string granting access to whoever registers it first. A listed address must also be verified before it counts. |
-| `EMAIL_API_KEY`, `EMAIL_FROM` | Transactional email. Without them, password reset is unavailable and only allowlisted reviewers are verified. |
+| `EMAIL_API_KEY`, `EMAIL_FROM` | **Required.** An address is proven only by following a link sent to it, and KYC, trading and reviewer access all require a proven address — so without these the authenticated application is unreachable for everyone. Password reset is unavailable too. |
 | `APP_ORIGIN` | Base URL used in emailed links. Defaults to the request origin. |
 | `PASSWORD_HASH_ITERATIONS` | PBKDF2 work factor. The default costs ~37ms CPU, which exceeds a 10ms Workers free-plan limit. |
 | `BINANCE_DATA_BASE_URL` | Candle feed host. Defaults to the public Binance data API; overridden in tests to serve fixture candles. |

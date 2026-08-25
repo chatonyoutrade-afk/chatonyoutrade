@@ -22,6 +22,6 @@ export async function POST(request: Request) {
   // Every existing session is dropped: whoever reset the password decides who
   // stays signed in, and an attacker's session must not survive it.
   await destroyAllSessionsFor(email);
-  await clearThrottle(clientKeys(request, email));
+  await clearThrottle(clientKeys(request, email, "reset"));
   return NextResponse.json({ ok: true });
 }

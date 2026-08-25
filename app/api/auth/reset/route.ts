@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!mailerStatus().configured) return NextResponse.json({ error: "Password reset is not available on this deployment yet." }, { status: 503 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const email = String(body.email ?? "").trim().toLowerCase();
-  const keys = clientKeys(request, email);
+  const keys = clientKeys(request, email, "reset");
   const throttle = await checkThrottle(keys);
   if (throttle.blocked) {
     return NextResponse.json({ error: `Too many requests. Try again in ${Math.ceil(throttle.retryAfterSeconds / 60)} minutes.` }, { status: 429, headers: { "retry-after": String(throttle.retryAfterSeconds) } });

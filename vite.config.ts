@@ -23,6 +23,11 @@ const localBindingConfig = {
     KYC_PROVIDER_APP_ID: process.env.KYC_PROVIDER_APP_ID ?? "",
     KYC_PROVIDER_APP_KEY: process.env.KYC_PROVIDER_APP_KEY ?? "",
     BINANCE_DATA_BASE_URL: process.env.BINANCE_DATA_BASE_URL ?? "",
+    EMAIL_PROVIDER: process.env.EMAIL_PROVIDER ?? "",
+    EMAIL_API_KEY: process.env.EMAIL_API_KEY ?? "",
+    EMAIL_FROM: process.env.EMAIL_FROM ?? "",
+    APP_ORIGIN: process.env.APP_ORIGIN ?? "",
+    PASSWORD_HASH_ITERATIONS: process.env.PASSWORD_HASH_ITERATIONS ?? "",
   },
   d1_databases: d1
     ? [

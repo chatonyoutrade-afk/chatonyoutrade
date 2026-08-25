@@ -155,7 +155,9 @@ test("first-party accounts, throttling and verification", { timeout: 180_000 }, 
       const cookie = (registered.headers.get("set-cookie") ?? "").split(";")[0];
       const response = await fetch(`${BASE}/api/kyc`, { headers: { cookie } });
       assert.equal(response.status, 403);
-      assert.match((await response.json()).error, /Confirm your email address/);
+      // The message names whichever of the two causes applies: the address is
+      // unconfirmed, or the deployment cannot send the mail that would confirm it.
+      assert.match((await response.json()).error, /Confirm your email address|cannot send email/);
     });
 
     await t.test("signing out ends the session", async () => {
@@ -193,6 +195,36 @@ test("first-party accounts, throttling and verification", { timeout: 180_000 }, 
       const loginSource = readFileSync(`${projectRoot}app/login/page.tsx`, "utf8");
       assert.match(loginSource, /safeRelativeReturnPath/, "the sign-in page must use the shared check");
       assert.doesNotMatch(loginSource, /startsWith\("\/\/"\)/, "the weaker prefix test must not come back");
+    });
+
+    await t.test("a reset request cannot lock the target out of sign-in", async () => {
+      // One shared counter would let anyone deny a victim sign-in by asking
+      // for password resets on their behalf.
+      db.exec("DELETE FROM auth_throttle");
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await json("/api/auth/reset", { method: "POST", body: JSON.stringify({ email: "case.user@example.com" }) });
+      }
+      const response = await json("/api/auth/login", { method: "POST", body: JSON.stringify({ email: "case.user@example.com", password: REGISTER.password }) });
+      assert.notEqual(response.status, 429, "sign-in must not be throttled by someone else's reset requests");
+      assert.equal(response.status, 200);
+    });
+
+    await t.test("sign-in costs the same whether or not the account exists", async () => {
+      // Identical body and status are not enough: the hash must run on both
+      // paths or the response time enumerates registered addresses.
+      const source = readFileSync(`${projectRoot}app/api/auth/login/route.ts`, "utf8");
+      assert.match(source, /burnVerificationCost/, "the missing-account path must pay the hashing cost too");
+
+      db.exec("DELETE FROM auth_throttle");
+      const time = async (email) => {
+        const started = performance.now();
+        await json("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password: "not-the-password" }) });
+        return performance.now() - started;
+      };
+      const known = await time("case.user@example.com");
+      const unknown = await time("definitely-not-registered@example.com");
+      const slower = Math.max(known, unknown);
+      assert.ok(Math.abs(known - unknown) < slower * 0.6, `timing must not separate the cases: known ${known.toFixed(0)}ms vs unknown ${unknown.toFixed(0)}ms`);
     });
 
     await t.test("password reset refuses to pretend when no mail provider is configured", async () => {

@@ -4,6 +4,7 @@ import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { kycApplications } from "../../../db/schema";
 import { runProviderChecks } from "../../../lib/kyc-provider";
+import { mailerStatus } from "../../../lib/mailer";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,14 @@ const safeApplication = (application: typeof kycApplications.$inferSelect) => ({
   reviewedAt: application.reviewedAt,
 });
 
-const UNVERIFIED = "Confirm your email address before starting KYC.";
+const unverifiedReason = () => mailerStatus().configured
+  ? "Confirm your email address before starting KYC."
+  : "This deployment cannot send email, so no address can be confirmed and KYC is closed. Set EMAIL_API_KEY and EMAIL_FROM.";
 
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (!user.emailVerified) return NextResponse.json({ error: UNVERIFIED }, { status: 403 });
+  if (!user.emailVerified) return NextResponse.json({ error: unverifiedReason() }, { status: 403 });
   const [application] = await getDb().select().from(kycApplications).where(eq(kycApplications.userEmail, user.email)).limit(1);
   return NextResponse.json({ application: application ? safeApplication(application) : null });
 }
@@ -44,7 +47,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  if (!user.emailVerified) return NextResponse.json({ error: UNVERIFIED }, { status: 403 });
+  if (!user.emailVerified) return NextResponse.json({ error: unverifiedReason() }, { status: 403 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const fullName = String(body.fullName ?? "").trim();
   const dob = String(body.dob ?? "");
@@ -92,11 +95,11 @@ export async function POST(request: Request) {
     reviewNote: null,
     reviewChecks: "[]",
     reviewedBy: null,
-    providerName: null as string | null,
-    providerReference: null as string | null,
-    providerOutcome: null as string | null,
-    providerChecks: null as string | null,
-    providerCheckedAt: null as number | null,
+    providerName: existing?.providerName ?? null as string | null,
+    providerReference: existing?.providerReference ?? null as string | null,
+    providerOutcome: existing?.providerOutcome ?? null as string | null,
+    providerChecks: existing?.providerChecks ?? null as string | null,
+    providerCheckedAt: existing?.providerCheckedAt ?? null as number | null,
     submittedAt: existing?.submittedAt ?? now,
     updatedAt: now,
     reviewedAt: null,
@@ -116,6 +119,8 @@ export async function POST(request: Request) {
       values.providerCheckedAt = run.checkedAt;
     }
   } catch (reason) {
+    // The previous verdict is left in place. Clearing it here would let a
+    // resubmission during an outage wipe a recorded failure.
     providerError = reason instanceof Error ? reason.message : "The verification provider could not be reached.";
   }
 

@@ -38,6 +38,8 @@ export function getKycProviderStatus(): KycProviderStatus {
   };
 }
 
+const PROVIDER_TIMEOUT_MS = 15000;
+
 export type ProviderCheckResult = { id: string; label: string; outcome: "pass" | "fail" | "review" | "skipped"; detail: string };
 export type ProviderRun = {
   provider: string;
@@ -75,8 +77,11 @@ export async function runProviderChecks(applicant: ApplicantInput): Promise<Prov
   if (!status.configured || status.mode === "unset") return null;
 
   const baseUrl = readEnvValue("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
+  // Bounded, so an unresponsive provider fails the run instead of holding the
+  // applicant's submission open until the request is killed.
   const response = await fetch(`${baseUrl}/workflows/${encodeURIComponent(readEnvValue("KYC_PROVIDER_WORKFLOW_ID"))}/runs`, {
     method: "POST",
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     headers: {
       "content-type": "application/json",
       appId: readEnvValue("KYC_PROVIDER_APP_ID"),

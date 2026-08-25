@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-type LiveSignal = { asset:string; signal:"BUY"|"SELL"|"NO TRADE"; confidence:number; entry:number; stopLoss:number|null; takeProfit:number|null; reasons:string[]; generatedAt:number; source:string };
+type LiveSignal = { receivedAt:number; asset:string; signal:"BUY"|"SELL"|"NO TRADE"; confidence:number; entry:number; stopLoss:number|null; takeProfit:number|null; reasons:string[]; generatedAt:number; source:string };
 
 // Presentation only. Every price on this screen comes from the live signal API.
 const marketMeta:Record<string,{color:string,symbol:string,name:string}>={
@@ -53,7 +53,9 @@ export default function PaperOrder(){
     setRefreshing(true);
     try{
       const data=await loadSignal();
-      setSignal(data);setFeedError("");
+      // Age is measured from when this browser received the signal, not from
+      // the server timestamp, so a skewed client clock cannot expire it.
+      setSignal({...data,receivedAt:Date.now()});setFeedError("");
       if(!levelsTouched.current&&data.signal===side&&data.stopLoss&&data.takeProfit){setStop(data.stopLoss);setTarget(data.takeProfit)}
     }catch(reason){
       setSignal(null);
@@ -65,7 +67,7 @@ export default function PaperOrder(){
   useEffect(()=>{void refresh();const timer=window.setInterval(()=>void refresh(),REFRESH_MS);return()=>window.clearInterval(timer)},[refresh]);
   useEffect(()=>{const timer=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(timer)},[]);
 
-  const signalAgeMs=signal?now-signal.generatedAt:Number.POSITIVE_INFINITY;
+  const signalAgeMs=signal?now-signal.receivedAt:Number.POSITIVE_INFINITY;
   const expired=signalAgeMs>MAX_SIGNAL_AGE_MS;
   const feedLive=Boolean(signal)&&!expired;
   const directionOk=Boolean(signal)&&signal!.signal===side;
@@ -98,7 +100,7 @@ export default function PaperOrder(){
     setStage("executing");setError("");
     try{
       // Revalidate against live candle data immediately before the order is sent.
-      const fresh=await loadSignal();
+      const fresh={...await loadSignal(),receivedAt:Date.now()};
       setSignal(fresh);setFeedError("");
       if(fresh.signal!==side)throw new Error(`The live quant signal moved to ${fresh.signal}. This ${side} paper order was blocked.`);
       const response=await fetch("/api/trades",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({asset,side,amount,entryPrice:fresh.entry,stopPrice:stop,targetPrice:target,confidence:fresh.confidence,signalGeneratedAt:fresh.generatedAt})});

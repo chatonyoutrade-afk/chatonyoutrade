@@ -23,7 +23,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-  const keys = clientKeys(request, user.email);
+  const keys = clientKeys(request, user.email, "verify");
   const throttle = await checkThrottle(keys);
   if (throttle.blocked) {
     return NextResponse.json({ error: `Too many requests. Try again in ${Math.ceil(throttle.retryAfterSeconds / 60)} minutes.` }, { status: 429, headers: { "retry-after": String(throttle.retryAfterSeconds) } });

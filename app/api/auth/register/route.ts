@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   // Registration reveals whether an email is already taken, which is a known
   // enumeration trade-off. Throttling by IP keeps that from being usable at
   // scale; removing the leak entirely needs a verification email instead.
-  const throttle = await checkThrottle(clientKeys(request, ""));
+  const throttle = await checkThrottle(clientKeys(request, "", "register"));
   if (throttle.blocked) {
     return NextResponse.json(
       { error: `Too many attempts. Try again in ${Math.ceil(throttle.retryAfterSeconds / 60)} minutes.` },
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   const db = getDb();
   const [existing] = await db.select({ email: appUsers.email }).from(appUsers).where(eq(appUsers.email, email)).limit(1);
   if (existing) {
-    await recordFailure(clientKeys(request, ""));
+    await recordFailure(clientKeys(request, "", "register"));
     return NextResponse.json({ error: "An account already exists for this email. Sign in instead." }, { status: 409 });
   }
 

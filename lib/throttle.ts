@@ -10,10 +10,16 @@ const MAX_FAILURES = 5;
 // person's account just by submitting wrong passwords for their email.
 export type ThrottleState = { blocked: boolean; retryAfterSeconds: number };
 
-export function clientKeys(request: Request, email: string) {
+// Each action counts separately. Sharing one keyspace let an unauthenticated
+// caller lock a victim out of sign-in just by asking for password resets, and
+// let a signed-in user lock their own address by re-requesting a verification
+// email.
+export type ThrottleAction = "login" | "register" | "reset" | "verify";
+
+export function clientKeys(request: Request, email: string, action: ThrottleAction) {
   const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const keys = [`ip:${ip}`];
-  if (email) keys.push(`email:${email}`);
+  const keys = [`${action}:ip:${ip}`];
+  if (email) keys.push(`${action}:email:${email}`);
   return keys;
 }
 
