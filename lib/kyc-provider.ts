@@ -84,6 +84,60 @@ async function getSandboxAccessToken(baseUrl: string) {
   return token;
 }
 
+function sandboxRequestHeaders(accessToken: string) {
+  return {
+    authorization: accessToken,
+    "content-type": "application/json",
+    "x-api-key": readEnv("SANDBOX_API_KEY"),
+  };
+}
+
+export type DigiLockerSession = { sessionId: string; authorizationUrl: string };
+
+export async function initiateDigiLockerSession(redirectUrl: string): Promise<DigiLockerSession> {
+  const status = getKycProviderStatus();
+  if (!status.configured || status.mode === "unset") throw new Error("Sandbox KYC is not configured.");
+  const baseUrl = readEnv("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
+  const accessToken = await getSandboxAccessToken(baseUrl);
+  const response = await fetch(`${baseUrl}/kyc/digilocker/sessions/init`, {
+    method: "POST",
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    headers: sandboxRequestHeaders(accessToken),
+    body: JSON.stringify({
+      "@entity": "in.co.sandbox.kyc.digilocker.session.request",
+      flow: "signin",
+      redirect_url: redirectUrl,
+      doc_types: ["aadhaar", "pan"],
+      consent_expiry: Date.now() + 60 * 60 * 1000,
+    }),
+  });
+  if (!response.ok) throw new Error(`Sandbox DigiLocker initiation returned ${response.status}.`);
+  const payload = await response.json() as { data?: { session_id?: unknown; authorization_url?: unknown } };
+  const sessionId = String(payload.data?.session_id ?? "");
+  const authorizationUrl = String(payload.data?.authorization_url ?? "");
+  const target = new URL(authorizationUrl);
+  const approvedHost = target.protocol === "https:" && (target.hostname.endsWith("meripehchaan.gov.in") || target.hostname.endsWith("digilocker.gov.in"));
+  if (!sessionId || !approvedHost) throw new Error("Sandbox returned an invalid DigiLocker session.");
+  return { sessionId, authorizationUrl };
+}
+
+export async function checkDigiLockerSession(sessionId: string) {
+  if (!/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error("Invalid DigiLocker session reference.");
+  const status = getKycProviderStatus();
+  if (!status.configured || status.mode === "unset") throw new Error("Sandbox KYC is not configured.");
+  const baseUrl = readEnv("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
+  const accessToken = await getSandboxAccessToken(baseUrl);
+  const response = await fetch(`${baseUrl}/kyc/digilocker/sessions/${encodeURIComponent(sessionId)}/status`, {
+    method: "GET",
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    headers: sandboxRequestHeaders(accessToken),
+  });
+  if (!response.ok) throw new Error(`Sandbox DigiLocker status returned ${response.status}.`);
+  const payload = await response.json() as { data?: { status?: unknown; documents?: unknown; doc_types?: unknown } };
+  const state = String(payload.data?.status ?? "created").toLowerCase();
+  return { state, completed: ["succeeded", "success", "completed"].includes(state) };
+}
+
 function toSandboxDate(isoDate: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
   if (!match) throw new Error("Date of birth is not in the expected format.");
@@ -102,11 +156,7 @@ export async function runProviderChecks(applicant: ApplicantInput): Promise<Prov
   const response = await fetch(`${baseUrl}/kyc/pan/verify`, {
     method: "POST",
     signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-    headers: {
-      authorization: accessToken,
-      "content-type": "application/json",
-      "x-api-key": readEnv("SANDBOX_API_KEY"),
-    },
+    headers: sandboxRequestHeaders(accessToken),
     body: JSON.stringify({
       "@entity": "in.co.sandbox.kyc.pan_verification.request",
       pan: applicant.pan,
