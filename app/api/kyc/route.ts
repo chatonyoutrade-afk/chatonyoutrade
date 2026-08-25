@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { kycApplications } from "../../../db/schema";
 
@@ -29,14 +29,14 @@ const safeApplication = (application: typeof kycApplications.$inferSelect) => ({
 });
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const [application] = await getDb().select().from(kycApplications).where(eq(kycApplications.userEmail, user.email)).limit(1);
   return NextResponse.json({ application: application ? safeApplication(application) : null });
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const fullName = String(body.fullName ?? "").trim();

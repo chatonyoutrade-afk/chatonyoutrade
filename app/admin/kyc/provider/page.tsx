@@ -1,4 +1,4 @@
-import { requireChatGPTUser } from "../../../chatgpt-auth";
+import { requireUser } from "../../../auth";
 import { isKycAdmin } from "../../../../lib/kyc-admin";
 import { getKycProviderStatus } from "../../../../lib/kyc-provider";
 
@@ -27,8 +27,8 @@ const setupSteps = [
 ];
 
 export default async function KycProviderPage() {
-  const user = await requireChatGPTUser("/admin/kyc/provider");
-  if (!isKycAdmin(user)) return <main className="admin-kyc-shell"><header className="admin-kyc-top"><a href="/"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>NEOCRAFT LLP · KYC OPERATIONS</span><a href="/">Exit</a></header><section className="admin-access-denied"><i>◇</i><span>RESTRICTED OPERATIONS</span><h1>KYC admin access required.</h1><p>Your signed-in email is not included in the server-side KYC reviewer allowlist.</p><a href="/signout-with-chatgpt?return_to=%2Flogin">Use another account</a></section></main>;
+  const user = await requireUser("/admin/kyc/provider");
+  if (!isKycAdmin(user)) return <main className="admin-kyc-shell"><header className="admin-kyc-top"><a href="/"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>NEOCRAFT LLP · KYC OPERATIONS</span><a href="/">Exit</a></header><section className="admin-access-denied"><i>◇</i><span>RESTRICTED OPERATIONS</span><h1>KYC admin access required.</h1><p>Your signed-in email is not included in the server-side KYC reviewer allowlist.</p><a href="/logout">Use another account</a></section></main>;
 
   const status = getKycProviderStatus();
   const tone = status.configured && status.mode === "live" ? "live" : status.configured ? "sandbox" : "unset";

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireChatGPTUser } from "../chatgpt-auth";
+import { requireUser } from "../auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,6 @@ export const metadata: Metadata = {
 };
 
 export default async function KycLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  await requireChatGPTUser("/kyc");
+  await requireUser("/kyc");
   return children;
 }

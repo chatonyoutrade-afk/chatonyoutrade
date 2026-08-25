@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import type { ChatGPTUser } from "../app/chatgpt-auth";
+import type { AppUser } from "../app/auth";
 
 // Reviewers allowed to open /admin/kyc and /admin/kyc/provider.
 //
@@ -18,6 +18,6 @@ function adminEmails() {
   return new Set(configured.length ? configured : defaultAdminEmails);
 }
 
-export function isKycAdmin(user: ChatGPTUser | null) {
+export function isKycAdmin(user: AppUser | null) {
   return Boolean(user && adminEmails().has(user.email.toLowerCase()));
 }

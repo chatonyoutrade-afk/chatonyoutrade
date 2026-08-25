@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { ensurePaperAccount, listPaperTrades, resetPaperAccount } from "../../../db/paper-account";
 import { paperAccounts, paperSettings } from "../../../db/schema";
@@ -8,13 +8,13 @@ import { paperAccounts, paperSettings } from "../../../db/schema";
 export const dynamic = "force-dynamic";
 
 export async function GET(){
- const user=await getChatGPTUser(); if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
+ const user=await getUser(); if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
  const {account,settings}=await ensurePaperAccount(user.email,user.displayName); const trades=await listPaperTrades(user.email);
  return NextResponse.json({user,account:{...account,balance:account.balancePaise/100,startingBalance:account.startingBalancePaise/100},settings:{...settings,capital:settings.capitalPaise/100},trades});
 }
 
 export async function POST(request:Request){
- const user=await getChatGPTUser(); if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
+ const user=await getUser(); if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
  const body=await request.json(); const {account}=await ensurePaperAccount(user.email,user.displayName);
  if(body.action==="reset"){await resetPaperAccount(user.email);return NextResponse.json({ok:true,balance:10000})}
  const db=getDb(),now=Date.now();

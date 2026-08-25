@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { exchangeConnections } from "../../../db/schema";
 import { getBinanceTestnetAccount } from "../../../lib/binance-testnet";
@@ -23,14 +23,14 @@ function publicConnection(connection: typeof exchangeConnections.$inferSelect) {
 }
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const [connection] = await getDb().select().from(exchangeConnections).where(eq(exchangeConnections.userEmail, user.email)).limit(1);
   return NextResponse.json({ connected: Boolean(connection), connection: connection ? publicConnection(connection) : null });
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const db = getDb();
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   await getDb().delete(exchangeConnections).where(eq(exchangeConnections.userEmail, user.email));
   return NextResponse.json({ ok: true });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../../chatgpt-auth";
+import { getUser } from "../../../auth";
 import { getDb } from "../../../../db";
 import { ensurePaperAccount } from "../../../../db/paper-account";
 import { exchangeConnections, testnetOrders, tradingEvents } from "../../../../db/schema";
@@ -65,7 +65,7 @@ async function syncProtection(userEmail: string) {
 }
 
 export async function GET(request: Request) {
-  const user = await getChatGPTUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const user = await getUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   if (new URL(request.url).searchParams.get("sync") === "1") await syncProtection(user.email);
   const db = getDb(), orders = await db.select().from(testnetOrders).where(eq(testnetOrders.userEmail, user.email)).orderBy(desc(testnetOrders.createdAt)).limit(50), events = await db.select().from(tradingEvents).where(eq(tradingEvents.userEmail, user.email)).orderBy(desc(tradingEvents.createdAt)).limit(80), { settings } = await ensurePaperAccount(user.email, user.displayName);
   const closed = orders.filter((item) => item.status === "closed"), pnl = closed.reduce((sum, item) => sum + item.pnlQuote, 0), wins = closed.filter((item) => item.pnlQuote > 0).length;
@@ -73,7 +73,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const user = await getUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>, action = String(body.action || "validate"), db = getDb();
   try {
     if (action === "close") {

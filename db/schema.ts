@@ -151,3 +151,26 @@ export const tradingEvents = sqliteTable("trading_events", {
   detail: text("detail").notNull(),
   createdAt: integer("created_at").notNull(),
 });
+
+export const appUsers = sqliteTable("app_users", {
+  email: text("email").primaryKey(),
+  displayName: text("display_name").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  // Stored per user so the work factor can be raised without locking anyone out.
+  passwordIterations: integer("password_iterations").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
+// The cookie carries a random token; only its SHA-256 digest is stored, so a
+// database copy cannot be replayed as a live session.
+export const appSessions = sqliteTable("app_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (table) => [
+  index("idx_app_sessions_user_email").on(table.userEmail),
+  index("idx_app_sessions_expires_at").on(table.expiresAt),
+]);

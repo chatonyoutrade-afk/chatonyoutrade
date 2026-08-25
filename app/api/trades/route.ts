@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { getUser } from "../../auth";
 import { getD1, getDb } from "../../../db";
 import { ensurePaperAccount, listPaperTrades } from "../../../db/paper-account";
 import { paperAccounts, paperTrades } from "../../../db/schema";
@@ -13,7 +13,7 @@ const MAX_FEED_AGE_MS = 45000;      // live candle snapshot age on the server
 const MAX_SNAPSHOT_AGE_MS = 90000;  // age of the signal shown to the client
 const MAX_ENTRY_DRIFT_PCT = 0.35;   // reviewed entry vs live entry
 
-export async function GET(){const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});await ensurePaperAccount(user.email,user.displayName);return NextResponse.json({trades:await listPaperTrades(user.email)})}
+export async function GET(){const user=await getUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});await ensurePaperAccount(user.email,user.displayName);return NextResponse.json({trades:await listPaperTrades(user.email)})}
 
 async function evaluateRisk(email:string,displayName:string,body:Record<string,unknown>){
  const amount=Number(body.amount),asset=String(body.asset||"").toUpperCase(),quant=await getQuantSignal(asset),entryPrice=quant.entry,stopPrice=Number(body.stopPrice),targetPrice=Number(body.targetPrice),confidence=quant.confidence,side=body.side==="SELL"?"SELL":"BUY";
@@ -46,7 +46,7 @@ async function evaluateRisk(email:string,displayName:string,body:Record<string,u
 }
 
 export async function POST(request:Request){
- const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
+ const user=await getUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
  const body=await request.json();
  if(body.action==="close"){
   const exitPrice=Number(body.exitPrice),id=String(body.id||"");

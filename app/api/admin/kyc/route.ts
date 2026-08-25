@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getChatGPTUser } from "../../../chatgpt-auth";
+import { getUser } from "../../../auth";
 import { getD1, getDb } from "../../../../db";
 import { kycApplications, kycReviewEvents } from "../../../../db/schema";
 import { isKycAdmin } from "../../../../lib/kyc-admin";
@@ -10,7 +10,7 @@ const reviewChecks = ["identity", "address", "pan", "liveness", "bank", "sanctio
 const standardApprovalChecks = reviewChecks.slice(0, 6);
 
 export async function GET() {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   if (!isKycAdmin(user)) return NextResponse.json({ error: "KYC admin access required" }, { status: 403 });
   const db = getDb();
@@ -20,7 +20,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser();
+  const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   if (!isKycAdmin(user)) return NextResponse.json({ error: "KYC admin access required" }, { status: 403 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
