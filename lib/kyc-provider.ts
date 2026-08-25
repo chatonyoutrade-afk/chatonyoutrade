@@ -9,24 +9,22 @@ export type KycProviderStatus = {
   variables: ProviderVariable[];
 };
 
-const requiredVariables = [
+const sandboxVariables = [
   { key: "KYC_PROVIDER", secret: false, text: "Provider identifier recorded alongside every review decision." },
   { key: "KYC_PROVIDER_MODE", secret: false, text: "Must stay `sandbox` until compliance clears the live workflow." },
-  { key: "KYC_PROVIDER_BASE_URL", secret: false, text: "Regional API host issued with the provider account." },
-  { key: "KYC_PROVIDER_WORKFLOW_ID", secret: false, text: "Workflow that runs PAN, document, liveness and AML screening." },
-  { key: "KYC_PROVIDER_APP_ID", secret: true, text: "Server-side credential. Never sent to the browser." },
-  { key: "KYC_PROVIDER_APP_KEY", secret: true, text: "Server-side credential. Never sent to the browser." },
+  { key: "KYC_PROVIDER_BASE_URL", secret: false, text: "Sandbox API host; production uses a separate approved host." },
+  { key: "SANDBOX_API_KEY", secret: true, text: "Server-side Sandbox API key. Never sent to the browser." },
+  { key: "SANDBOX_API_SECRET", secret: true, text: "Server-side Sandbox API secret. Never sent to the browser." },
 ] as const;
 
 function readEnv(key: string) {
   const workerValue = (env as unknown as Record<string, unknown>)[key];
-  const value = typeof workerValue === "string" ? workerValue : process.env[key] ?? "";
-  return value.trim();
+  return (typeof workerValue === "string" ? workerValue : process.env[key] ?? "").trim();
 }
 
 // Only presence is ever reported. Credential values stay inside the worker.
 export function getKycProviderStatus(): KycProviderStatus {
-  const variables = requiredVariables.map((item) => ({ key: item.key, secret: item.secret, text: item.text, present: readEnv(item.key).length > 0 }));
+  const variables = sandboxVariables.map((item) => ({ ...item, present: readEnv(item.key).length > 0 }));
   const missing = variables.filter((item) => !item.present).map((item) => item.key);
   const mode = readEnv("KYC_PROVIDER_MODE").toLowerCase();
   return {
@@ -51,8 +49,7 @@ export type ProviderRun = {
 };
 
 // Which reviewer attestation each provider check can satisfy. A passing
-// provider result never approves anything on its own; it only tells the
-// reviewer which boxes the automated run supports.
+// provider result never approves anything on its own.
 export const PROVIDER_CHECK_MAP: Record<string, string> = {
   pan: "pan",
   identity: "identity",
@@ -62,72 +59,85 @@ export const PROVIDER_CHECK_MAP: Record<string, string> = {
   bank: "bank",
 };
 
-function readEnvValue(key: string) {
-  const workerValue = (env as unknown as Record<string, unknown>)[key];
-  return (typeof workerValue === "string" ? workerValue : process.env[key] ?? "").trim();
-}
+type ApplicantInput = { reference: string; fullName: string; dob: string; pan: string };
 
-type ApplicantInput = { reference: string; fullName: string; birthYear: number; panLast4: string; city: string; state: string; pincode: string; idType: string };
+let cachedAccessToken = "";
+let cachedAccessTokenUntil = 0;
 
-// Submits the application to the configured provider workflow and normalises
-// the response. Returns null when no provider is configured — the caller then
-// stays on the manual path rather than inventing a result.
-export async function runProviderChecks(applicant: ApplicantInput): Promise<ProviderRun | null> {
-  const status = getKycProviderStatus();
-  if (!status.configured || status.mode === "unset") return null;
-
-  const baseUrl = readEnvValue("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
-  // Bounded, so an unresponsive provider fails the run instead of holding the
-  // applicant's submission open until the request is killed.
-  const response = await fetch(`${baseUrl}/workflows/${encodeURIComponent(readEnvValue("KYC_PROVIDER_WORKFLOW_ID"))}/runs`, {
+async function getSandboxAccessToken(baseUrl: string) {
+  if (cachedAccessToken && Date.now() < cachedAccessTokenUntil) return cachedAccessToken;
+  const response = await fetch(`${baseUrl}/authenticate`, {
     method: "POST",
     signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
     headers: {
+      "x-api-key": readEnv("SANDBOX_API_KEY"),
+      "x-api-secret": readEnv("SANDBOX_API_SECRET"),
+    },
+  });
+  if (!response.ok) throw new Error(`Sandbox authentication returned ${response.status}.`);
+  const payload = await response.json() as { data?: { access_token?: unknown } };
+  const token = String(payload.data?.access_token ?? "");
+  if (!token) throw new Error("Sandbox authentication returned no access token.");
+  cachedAccessToken = token;
+  // Sandbox tokens last 24 hours; refresh early so an in-flight check never uses an expired token.
+  cachedAccessTokenUntil = Date.now() + 23 * 60 * 60 * 1000;
+  return token;
+}
+
+function toSandboxDate(isoDate: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  if (!match) throw new Error("Date of birth is not in the expected format.");
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
+// Full PAN and DOB exist only in this request and are sent directly to Sandbox
+// over HTTPS. The database continues to store only PAN last-four and birth year.
+export async function runProviderChecks(applicant: ApplicantInput): Promise<ProviderRun | null> {
+  const status = getKycProviderStatus();
+  if (!status.configured || status.mode === "unset") return null;
+  if (!status.name.toLowerCase().includes("sandbox")) throw new Error("The configured KYC provider is not supported by this adapter.");
+
+  const baseUrl = readEnv("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
+  const accessToken = await getSandboxAccessToken(baseUrl);
+  const response = await fetch(`${baseUrl}/kyc/pan/verify`, {
+    method: "POST",
+    signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+    headers: {
+      authorization: accessToken,
       "content-type": "application/json",
-      appId: readEnvValue("KYC_PROVIDER_APP_ID"),
-      appKey: readEnvValue("KYC_PROVIDER_APP_KEY"),
+      "x-api-key": readEnv("SANDBOX_API_KEY"),
     },
     body: JSON.stringify({
-      transactionId: applicant.reference,
-      applicant: {
-        name: applicant.fullName,
-        birthYear: applicant.birthYear,
-        panLast4: applicant.panLast4,
-        address: { city: applicant.city, state: applicant.state, pincode: applicant.pincode },
-        idType: applicant.idType,
-      },
+      "@entity": "in.co.sandbox.kyc.pan_verification.request",
+      pan: applicant.pan,
+      name_as_per_pan: applicant.fullName,
+      date_of_birth: toSandboxDate(applicant.dob),
+      consent: "Y",
+      reason: "Identity verification for customer onboarding",
     }),
   });
 
-  if (!response.ok) throw new Error(`The verification provider returned ${response.status}.`);
-  const payload = await response.json() as Record<string, unknown>;
-  const rawChecks = Array.isArray(payload.checks) ? payload.checks as Record<string, unknown>[] : [];
-  const checks: ProviderCheckResult[] = rawChecks.map((item) => ({
-    id: String(item.id ?? ""),
-    label: String(item.label ?? item.id ?? "Check"),
-    outcome: normaliseOutcome(item.status ?? item.outcome),
-    detail: String(item.detail ?? item.reason ?? ""),
-  })).filter((item) => item.id);
-
-  // An unrecognised or missing overall verdict is treated as needing review,
-  // never as a pass.
-  const overall = normaliseOutcome(payload.status ?? payload.outcome);
-  const outcome = checks.some((item) => item.outcome === "fail") ? "fail" : overall === "pass" ? "pass" : overall === "fail" ? "fail" : "review";
+  if (!response.ok) throw new Error(`Sandbox PAN verification returned ${response.status}.`);
+  const payload = await response.json() as {
+    transaction_id?: unknown;
+    data?: { status?: unknown; remarks?: unknown; name_as_per_pan_match?: unknown; date_of_birth_match?: unknown };
+  };
+  const data = payload.data ?? {};
+  const panValid = String(data.status ?? "").toLowerCase() === "valid";
+  const nameMatches = data.name_as_per_pan_match === true;
+  const dobMatches = data.date_of_birth_match === true;
+  const passed = panValid && nameMatches && dobMatches;
+  const detail = passed
+    ? "PAN is valid and the submitted name and date of birth match."
+    : String(data.remarks ?? "PAN, name or date-of-birth verification did not pass.");
 
   return {
     provider: status.name,
     mode: status.mode === "live" ? "live" : "sandbox",
-    reference: String(payload.referenceId ?? payload.transactionId ?? applicant.reference),
-    outcome,
-    checks,
+    reference: String(payload.transaction_id ?? applicant.reference),
+    // PAN alone is never a complete KYC approval.
+    outcome: passed ? "review" : "fail",
+    checks: [{ id: "pan", label: "PAN verification", outcome: passed ? "pass" : "fail", detail }],
     checkedAt: Date.now(),
   };
-}
-
-function normaliseOutcome(value: unknown): ProviderCheckResult["outcome"] {
-  const text = String(value ?? "").toLowerCase();
-  if (["pass", "passed", "approved", "success", "auto_approved"].includes(text)) return "pass";
-  if (["fail", "failed", "rejected", "declined"].includes(text)) return "fail";
-  if (["skip", "skipped", "not_applicable"].includes(text)) return "skipped";
-  return "review";
 }
