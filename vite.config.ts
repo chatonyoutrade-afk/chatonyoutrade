@@ -1,7 +1,7 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json" with { type: "json" };
-import { sites } from "./build/sites-vite-plugin.ts";
+import { sites } from "@openai/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
@@ -16,6 +16,12 @@ const localBindingConfig = {
   compatibility_flags: ["nodejs_compat"],
   vars: {
     KYC_ADMIN_EMAILS: process.env.KYC_ADMIN_EMAILS ?? "",
+    KYC_PROVIDER: process.env.KYC_PROVIDER ?? "",
+    KYC_PROVIDER_MODE: process.env.KYC_PROVIDER_MODE ?? "",
+    KYC_PROVIDER_BASE_URL: process.env.KYC_PROVIDER_BASE_URL ?? "",
+    KYC_PROVIDER_WORKFLOW_ID: process.env.KYC_PROVIDER_WORKFLOW_ID ?? "",
+    KYC_PROVIDER_APP_ID: process.env.KYC_PROVIDER_APP_ID ?? "",
+    KYC_PROVIDER_APP_KEY: process.env.KYC_PROVIDER_APP_KEY ?? "",
   },
   d1_databases: d1
     ? [

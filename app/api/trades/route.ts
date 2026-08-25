@@ -8,10 +8,19 @@ import { getQuantSignal } from "../../../lib/quant-signal";
 
 export const dynamic = "force-dynamic";
 
+// A paper entry is only allowed against a signal the client actually reviewed.
+const MAX_FEED_AGE_MS = 45000;      // live candle snapshot age on the server
+const MAX_SNAPSHOT_AGE_MS = 90000;  // age of the signal shown to the client
+const MAX_ENTRY_DRIFT_PCT = 0.35;   // reviewed entry vs live entry
+
 export async function GET(){const user=await getChatGPTUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});await ensurePaperAccount(user.email,user.displayName);return NextResponse.json({trades:await listPaperTrades(user.email)})}
 
 async function evaluateRisk(email:string,displayName:string,body:Record<string,unknown>){
  const amount=Number(body.amount),asset=String(body.asset||"").toUpperCase(),quant=await getQuantSignal(asset),entryPrice=quant.entry,stopPrice=Number(body.stopPrice),targetPrice=Number(body.targetPrice),confidence=quant.confidence,side=body.side==="SELL"?"SELL":"BUY";
+ const now=Date.now(),reviewedEntry=Number(body.entryPrice),reviewedAt=Number(body.signalGeneratedAt);
+ const feedAgeMs=now-quant.generatedAt,snapshotAgeMs=Number.isFinite(reviewedAt)&&reviewedAt>0?now-reviewedAt:Number.POSITIVE_INFINITY;
+ const driftPct=Number.isFinite(reviewedEntry)&&reviewedEntry>0?Math.abs(reviewedEntry-entryPrice)/entryPrice*100:Number.POSITIVE_INFINITY;
+ const feedOk=feedAgeMs>=0&&feedAgeMs<=MAX_FEED_AGE_MS,snapshotOk=snapshotAgeMs>=0&&snapshotAgeMs<=MAX_SNAPSHOT_AGE_MS,driftOk=driftPct<=MAX_ENTRY_DRIFT_PCT;
  const inputValid=[amount,entryPrice,stopPrice,targetPrice,confidence].every(Number.isFinite)&&amount>=100&&amount<=5000&&entryPrice>0;
  const {account,settings}=await ensurePaperAccount(email,displayName),db=getDb(),amountPaise=Math.round(Math.max(0,amount)*100);
  const userTrades=await db.select().from(paperTrades).where(eq(paperTrades.userEmail,email)),openCount=userTrades.filter(item=>item.status==="open").length;
@@ -21,6 +30,9 @@ async function evaluateRisk(email:string,displayName:string,body:Record<string,u
  const levelsValid=side==="BUY"?stopPrice<entryPrice&&targetPrice>entryPrice:stopPrice>entryPrice&&targetPrice<entryPrice;
  const checks=[
   {id:"safety",label:"Emergency stop inactive",ok:!settings.emergencyStop,detail:settings.emergencyStop?"Resume manually from Emergency Safety before a new entry":"New paper entries are permitted"},
+  {id:"feed",label:"Live Binance candle feed",ok:feedOk,detail:feedOk?`${quant.source} · ${Math.round(feedAgeMs/1000)}s old`:"Live candle feed is stale. New entries are blocked until it recovers."},
+  {id:"snapshot",label:"Reviewed signal is current",ok:snapshotOk,detail:Number.isFinite(snapshotAgeMs)?`Reviewed ${Math.round(snapshotAgeMs/1000)}s ago · ${MAX_SNAPSHOT_AGE_MS/1000}s maximum`:"Refresh the live signal before placing this order"},
+  {id:"drift",label:"Reviewed entry still valid",ok:driftOk,detail:Number.isFinite(driftPct)?`${driftPct.toFixed(2)}% drift · ${MAX_ENTRY_DRIFT_PCT}% maximum · live ${entryPrice}`:"Reviewed entry price was not supplied"},
   {id:"input",label:"Valid paper order",ok:inputValid,detail:"₹100–₹5,000 allocation with valid prices"},
   {id:"balance",label:"Available paper balance",ok:amountPaise<=account.balancePaise,detail:`₹${(account.balancePaise/100).toLocaleString("en-IN")} available`},
   {id:"confidence",label:"AI confidence threshold",ok:confidence>=settings.minConfidence,detail:`${confidence}% signal · ${settings.minConfidence}% minimum`},
@@ -30,7 +42,7 @@ async function evaluateRisk(email:string,displayName:string,body:Record<string,u
   {id:"daily",label:"Daily-loss capacity",ok:dailyLossPaise<dailyLimitPaise,detail:`₹${(dailyLossPaise/100).toFixed(2)} used · ₹${(dailyLimitPaise/100).toFixed(2)} limit`},
   {id:"levels",label:"Protective price structure",ok:levelsValid&&(!settings.stopLossRequired||stopPrice>0)&&(!settings.takeProfitRequired||targetPrice>0),detail:`${side} stop and target verified`},
  ];
- return {allowed:checks.every(item=>item.ok),checks,risk:{riskPaise,maxRiskPaise,dailyLossPaise,dailyLimitPaise,openCount,maxPositions:settings.maxPositions},quant,account,settings,amountPaise,amount,entryPrice,stopPrice,targetPrice,confidence,side};
+ return {allowed:checks.every(item=>item.ok),checks,risk:{riskPaise,maxRiskPaise,dailyLossPaise,dailyLimitPaise,openCount,maxPositions:settings.maxPositions},feed:{ageMs:feedAgeMs,snapshotAgeMs:Number.isFinite(snapshotAgeMs)?snapshotAgeMs:null,driftPct:Number.isFinite(driftPct)?driftPct:null,liveEntry:entryPrice,generatedAt:quant.generatedAt},quant,account,settings,amountPaise,amount,entryPrice,stopPrice,targetPrice,confidence,side};
 }
 
 export async function POST(request:Request){
