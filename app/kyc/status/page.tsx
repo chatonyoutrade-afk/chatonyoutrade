@@ -39,20 +39,23 @@ export default function KycStatusPage() {
   if (!application) return <main className="kyc-shell"><header className="kyc-top"><a href="/" className="kyc-logo"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>KYC Status</span><a href="/">×</a></header><section className="kyc-result"><div className="kyc-result-icon">1</div><span>NO APPLICATION YET</span><h1>Start your KYC.</h1><p>{error || "Submit the required verification information before paper-account activation."}</p><nav><a href="/kyc">Begin KYC</a><a href="/support">Get help</a></nav></section></main>;
 
   const content = statusContent[application.status] ?? statusContent.pending;
+  const startDigiLocker = async () => {
+    setStartingDigiLocker(true); setError("");
+    try {
+      const response = await fetch("/api/kyc/digilocker", { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "DigiLocker could not be started.");
+      window.location.href = data.authorizationUrl;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "DigiLocker could not be started.");
+      setStartingDigiLocker(false);
+    }
+  };
   const primaryAction = async () => {
     if (application.status === "action_required") { window.location.href = "/kyc"; return; }
     if (application.status === "approved") { window.location.href = "/setup"; return; }
     if (application.status === "rejected") { window.location.href = "/support"; return; }
-    if (digiLocker !== "completed") {
-      setStartingDigiLocker(true); setError("");
-      try {
-        const response = await fetch("/api/kyc/digilocker", { method: "POST" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "DigiLocker could not be started.");
-        window.location.href = data.authorizationUrl;
-      } catch (reason) { setError(reason instanceof Error ? reason.message : "DigiLocker could not be started."); setStartingDigiLocker(false); }
-      return;
-    }
+    if (digiLocker !== "completed") { await startDigiLocker(); return; }
     await load(); setRefreshed(true); window.setTimeout(() => setRefreshed(false), 2200);
   };
   const submitted = new Date(application.submittedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
@@ -64,7 +67,7 @@ export default function KycStatusPage() {
     <section className="kyc-status-body"><div className="kyc-status-main"><header><span>APPLICATION PROGRESS</span><b>Reference · {application.reference}</b></header><div className="kyc-timeline">
       <article className="done"><i>✓</i><div><b>KYC submitted</b><p>Minimised identity and evidence-readiness metadata received.</p><small>{submitted}</small></div></article>
       <article className="done"><i>✓</i><div><b>Basic validation complete</b><p>PAN format, age, contact and evidence checkpoints passed.</p><small>System validation</small></div></article>
-      <article className={digiLocker === "completed" ? "done" : digiLocker === "pending" ? "active" : ""}><i>{digiLocker === "completed" ? "✓" : "3"}</i><div><b>DigiLocker document consent</b><p>{digiLocker === "completed" ? "Consent received; authorised reviewer will validate document matches." : digiLocker === "pending" ? "DigiLocker consent was started but is not complete." : "Connect DigiLocker to share Aadhaar and PAN documents with consent."}</p><small>{digiLocker === "completed" ? "Consent completed" : "Client action required"}</small></div></article>
+      <article className={digiLocker === "completed" ? "done" : digiLocker === "pending" ? "active" : ""}><i>{digiLocker === "completed" ? "✓" : "3"}</i><div><b>DigiLocker document consent</b><p>{digiLocker === "completed" ? "Consent received; authorised reviewer will validate document matches." : digiLocker === "pending" ? "DigiLocker consent was started but is not complete." : "Connect DigiLocker to share Aadhaar and PAN documents with consent."}</p><small>{digiLocker === "completed" ? "Consent completed" : "Client action required"}</small>{digiLocker !== "completed" ? <button type="button" className="kyc-inline-action" onClick={startDigiLocker} disabled={startingDigiLocker}>{startingDigiLocker ? "Opening DigiLocker…" : digiLocker === "pending" ? "Resume DigiLocker consent" : "Connect DigiLocker"} <b>→</b></button> : null}</div></article>
       <article className={application.status === "pending" ? "active" : application.status === "approved" ? "done" : "attention"}><i>{application.status === "pending" ? "⌁" : application.status === "approved" ? "✓" : "!"}</i><div><b>Authorised compliance review</b><p>{application.status === "pending" ? "Identity, sanctions and risk checks are pending." : application.reviewNote || "Reviewer decision recorded."}</p><small>{application.reviewedAt ? new Date(application.reviewedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Current step"}</small></div></article>
       <article className={application.status === "approved" ? "done" : ""}><i>{application.status === "approved" ? "✓" : "4"}</i><div><b>Paper-account decision</b><p>{application.status === "approved" ? "KYC approved; setup is unlocked." : "Account remains locked until approval."}</p><small>{application.status === "approved" ? "Approved" : "Pending"}</small></div></article>
     </div></div><aside className="kyc-status-side"><section><span>CLIENT</span><div><i>{initials || "CY"}</i><p><b>{application.fullName}</b><small>Individual · {application.nationality}</small></p></div><dl><dt>Email</dt><dd>{application.userEmail}</dd><dt>PAN</dt><dd>Ending {application.panLast4}</dd><dt>Mobile</dt><dd>Ending {application.mobileLast4}</dd><dt>Location</dt><dd>{application.city}, {application.state}</dd><dt>Identity type</dt><dd>{application.idType}</dd><dt>Risk rating</dt><dd>{application.riskLevel}</dd></dl></section><div className="kyc-status-lock"><i>◇</i><p><b>{application.status === "approved" ? "Paper setup unlocked" : "Account access locked"}</b><small>{application.status === "approved" ? "Continue to choose risk settings." : "Trading stays disabled until KYC approval."}</small></p></div></aside></section>
