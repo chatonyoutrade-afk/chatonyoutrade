@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { getUser } from "../../auth";
-import { getD1, getDb } from "../../../db";
+import { getDb } from "../../../db";
 import { ensurePaperAccount, listPaperTrades } from "../../../db/paper-account";
-import { paperAccounts, paperTrades } from "../../../db/schema";
+import { paperAccounts, paperSettings, paperTrades } from "../../../db/schema";
 import { getQuantSignal } from "../../../lib/quant-signal";
 
 export const dynamic = "force-dynamic";
@@ -56,11 +56,14 @@ export async function POST(request:Request){
   if(!trade||trade.status!=="open")return NextResponse.json({error:"Open paper position not found"},{status:404});
   const direction=trade.side==="SELL"?-1:1,rawPnl=trade.amountPaise*((exitPrice-trade.entryPrice)/trade.entryPrice)*direction;
   const pnlPaise=Math.max(-trade.amountPaise,Math.round(rawPnl)),settlementPaise=trade.amountPaise+pnlPaise,now=Date.now();
-  const d1=getD1(),[creditResult,closeResult]=await d1.batch([
-   d1.prepare("UPDATE paper_accounts SET balance_paise = balance_paise + ?, updated_at = ? WHERE user_email = ? AND EXISTS (SELECT 1 FROM paper_trades WHERE id = ? AND user_email = ? AND status = 'open')").bind(settlementPaise,now,user.email,id,user.email),
-   d1.prepare("UPDATE paper_trades SET status = 'closed', pnl_paise = ?, exit_price = ?, closed_at = ? WHERE id = ? AND user_email = ? AND status = 'open'").bind(pnlPaise,exitPrice,now,id,user.email),
-  ]);
-  if(Number(creditResult.meta.changes)!==1||Number(closeResult.meta.changes)!==1)return NextResponse.json({error:"Paper position changed before settlement. Refresh and try again."},{status:409});
+  try{
+   await db.transaction(async(tx)=>{
+    const [closed]=await tx.update(paperTrades).set({status:"closed",pnlPaise,exitPrice,closedAt:now}).where(and(eq(paperTrades.id,id),eq(paperTrades.userEmail,user.email),eq(paperTrades.status,"open"))).returning({id:paperTrades.id});
+    if(!closed)throw new Error("POSITION_CHANGED");
+    const [credited]=await tx.update(paperAccounts).set({balancePaise:sql`${paperAccounts.balancePaise} + ${settlementPaise}`,updatedAt:now}).where(eq(paperAccounts.userEmail,user.email)).returning({userEmail:paperAccounts.userEmail});
+    if(!credited)throw new Error("ACCOUNT_MISSING");
+   });
+  }catch{return NextResponse.json({error:"Paper position changed before settlement. Refresh and try again."},{status:409})}
   const [updatedAccount]=await db.select().from(paperAccounts).where(eq(paperAccounts.userEmail,user.email)).limit(1);
   return NextResponse.json({ok:true,id,pnlPaise,balancePaise:updatedAccount.balancePaise});
  }
@@ -68,12 +71,17 @@ export async function POST(request:Request){
  if(body.action==="validate")return NextResponse.json(evaluation);
  if(!evaluation.allowed){const failed=evaluation.checks.find(item=>!item.ok);return NextResponse.json({error:failed?.detail||"Risk engine blocked this paper order",checks:evaluation.checks,risk:evaluation.risk},{status:400})}
  const {amountPaise,entryPrice,stopPrice,targetPrice,side}=evaluation;
- const id=`CY-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`,now=Date.now(),asset=String(body.asset).toUpperCase(),d1=getD1();
- const [insertResult,debitResult]=await d1.batch([
-  d1.prepare("INSERT INTO paper_trades (id,user_email,asset,side,amount_paise,entry_price,stop_price,target_price,status,pnl_paise,created_at) SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM paper_accounts a JOIN paper_settings s ON s.user_email = a.user_email WHERE a.user_email = ? AND a.balance_paise >= ? AND s.emergency_stop = 0 AND (SELECT COUNT(*) FROM paper_trades p WHERE p.user_email = a.user_email AND p.status = 'open') < s.max_positions)").bind(id,user.email,asset,side,amountPaise,entryPrice,stopPrice,targetPrice,"open",0,now,user.email,amountPaise),
-  d1.prepare("UPDATE paper_accounts SET balance_paise = balance_paise - ?, updated_at = ? WHERE user_email = ? AND EXISTS (SELECT 1 FROM paper_trades WHERE id = ? AND user_email = ? AND status = 'open')").bind(amountPaise,now,user.email,id,user.email),
- ]);
- if(Number(insertResult.meta.changes)!==1||Number(debitResult.meta.changes)!==1)return NextResponse.json({error:"Balance or position limits changed. Refresh and validate the order again."},{status:409});
+ const id=`CY-${Date.now()}-${Math.random().toString(36).slice(2,8).toUpperCase()}`,now=Date.now(),asset=String(body.asset).toUpperCase(),db=getDb();
+ try{
+  await db.transaction(async(tx)=>{
+   const [freshSettings]=await tx.select().from(paperSettings).where(eq(paperSettings.userEmail,user.email)).limit(1);
+   const openTrades=await tx.select({id:paperTrades.id}).from(paperTrades).where(and(eq(paperTrades.userEmail,user.email),eq(paperTrades.status,"open")));
+   if(!freshSettings||freshSettings.emergencyStop||openTrades.length>=freshSettings.maxPositions)throw new Error("POSITION_LIMIT");
+   const [debited]=await tx.update(paperAccounts).set({balancePaise:sql`${paperAccounts.balancePaise} - ${amountPaise}`,updatedAt:now}).where(and(eq(paperAccounts.userEmail,user.email),gte(paperAccounts.balancePaise,amountPaise))).returning({userEmail:paperAccounts.userEmail});
+   if(!debited)throw new Error("BALANCE_CHANGED");
+   await tx.insert(paperTrades).values({id,userEmail:user.email,asset,side,amountPaise,entryPrice,stopPrice,targetPrice,status:"open",pnlPaise:0,createdAt:now});
+  });
+ }catch{return NextResponse.json({error:"Balance or position limits changed. Refresh and validate the order again."},{status:409})}
  const [updatedAccount]=await getDb().select().from(paperAccounts).where(eq(paperAccounts.userEmail,user.email)).limit(1);
  return NextResponse.json({ok:true,id,balancePaise:updatedAccount.balancePaise});
 }
