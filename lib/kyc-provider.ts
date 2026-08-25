@@ -94,6 +94,26 @@ function sandboxRequestHeaders(accessToken: string) {
 
 export type DigiLockerSession = { sessionId: string; authorizationUrl: string };
 
+async function sandboxResponseError(response: Response, operation: string) {
+  let providerCode = "";
+  try {
+    const payload = await response.json() as {
+      code?: unknown;
+      error?: { code?: unknown } | unknown;
+    };
+    providerCode = String(
+      payload.code ??
+      (typeof payload.error === "object" && payload.error !== null && "code" in payload.error
+        ? (payload.error as { code?: unknown }).code
+        : "") ?? "",
+    ).replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 64);
+  } catch {
+    // Some provider failures do not return JSON. Keep the client-facing error generic.
+  }
+  const suffix = providerCode ? ` (${providerCode})` : "";
+  return new Error(`Sandbox ${operation} returned ${response.status}${suffix}.`);
+}
+
 export async function initiateDigiLockerSession(redirectUrl: string): Promise<DigiLockerSession> {
   const status = getKycProviderStatus();
   if (!status.configured || status.mode === "unset") throw new Error("Sandbox KYC is not configured.");
@@ -108,10 +128,12 @@ export async function initiateDigiLockerSession(redirectUrl: string): Promise<Di
       flow: "signin",
       redirect_url: redirectUrl,
       doc_types: ["aadhaar", "pan"],
-      consent_expiry: Date.now() + 60 * 60 * 1000,
+      // Sandbox requires this to still be at least one hour in the future when
+      // its server validates the request, so leave a full extra-hour buffer.
+      consent_expiry: Date.now() + 2 * 60 * 60 * 1000,
     }),
   });
-  if (!response.ok) throw new Error(`Sandbox DigiLocker initiation returned ${response.status}.`);
+  if (!response.ok) throw await sandboxResponseError(response, "DigiLocker initiation");
   const payload = await response.json() as { data?: { session_id?: unknown; authorization_url?: unknown } };
   const sessionId = String(payload.data?.session_id ?? "");
   const authorizationUrl = String(payload.data?.authorization_url ?? "");
