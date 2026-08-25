@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { kycApplications } from "../../../db/schema";
+import { runProviderChecks } from "../../../lib/kyc-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,8 @@ const safeApplication = (application: typeof kycApplications.$inferSelect) => ({
   status: application.status,
   riskLevel: application.riskLevel,
   reviewNote: application.reviewNote,
+  providerOutcome: application.providerOutcome,
+  providerCheckedAt: application.providerCheckedAt,
   submittedAt: application.submittedAt,
   updatedAt: application.updatedAt,
   reviewedAt: application.reviewedAt,
@@ -89,11 +92,34 @@ export async function POST(request: Request) {
     reviewNote: null,
     reviewChecks: "[]",
     reviewedBy: null,
+    providerName: null as string | null,
+    providerReference: null as string | null,
+    providerOutcome: null as string | null,
+    providerChecks: null as string | null,
+    providerCheckedAt: null as number | null,
     submittedAt: existing?.submittedAt ?? now,
     updatedAt: now,
     reviewedAt: null,
   };
+
+  // The provider runs the automated identity, liveness and screening checks.
+  // A failure to reach it must not lose the application, so the submission is
+  // stored either way and the reviewer sees that no automated run exists.
+  let providerError = "";
+  try {
+    const run = await runProviderChecks({ reference, fullName, birthYear, panLast4: values.panLast4, city, state, pincode, idType });
+    if (run) {
+      values.providerName = run.provider;
+      values.providerReference = run.reference;
+      values.providerOutcome = run.outcome;
+      values.providerChecks = JSON.stringify(run.checks);
+      values.providerCheckedAt = run.checkedAt;
+    }
+  } catch (reason) {
+    providerError = reason instanceof Error ? reason.message : "The verification provider could not be reached.";
+  }
+
   await db.insert(kycApplications).values(values).onConflictDoUpdate({ target: kycApplications.userEmail, set: values });
-  return NextResponse.json({ ok: true, application: safeApplication(values) });
+  return NextResponse.json({ ok: true, application: safeApplication(values), providerError: providerError || undefined });
 }
 

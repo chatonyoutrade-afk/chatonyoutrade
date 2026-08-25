@@ -28,9 +28,30 @@ npm run dev
 The Sites build is produced with `npm run build`. Vercel uses the build command
 defined in `vercel.json`.
 
+## Configuration
+
+All runtime configuration is read from the deployment environment. Nothing
+below belongs in this repository.
+
+| Variable | Purpose |
+| --- | --- |
+| `EXCHANGE_VAULT_KEY` | AES key for the Binance Testnet credential vault. |
+| `KYC_ADMIN_EMAILS` | Comma-separated reviewer allowlist. Overrides the shipped default. |
+| `EMAIL_API_KEY`, `EMAIL_FROM` | Transactional email. Without them, password reset is unavailable and only allowlisted reviewers are verified. |
+| `APP_ORIGIN` | Base URL used in emailed links. Defaults to the request origin. |
+| `PASSWORD_HASH_ITERATIONS` | PBKDF2 work factor. The default costs ~37ms CPU, which exceeds a 10ms Workers free-plan limit. |
+| `KYC_PROVIDER`, `KYC_PROVIDER_MODE`, `KYC_PROVIDER_BASE_URL`, `KYC_PROVIDER_WORKFLOW_ID`, `KYC_PROVIDER_APP_ID`, `KYC_PROVIDER_APP_KEY` | Identity verification provider. Status is visible at `/admin/kyc/provider`. |
+
 ## Safety
 
 - Paper trading is the default.
+- Orders are rejected when the Binance candle feed is stale, when the signal
+  the client reviewed has expired, or when the reviewed price has drifted from
+  the live one. No price is ever displayed from a fallback constant.
 - Exchange integration is restricted to Binance Spot Testnet.
 - Testnet credentials are encrypted before storage.
+- Accounts are first-party: PBKDF2 password hashes, session tokens stored only
+  as digests, throttled sign-in, and KYC gated on a verified email address.
+- A connected verification provider is a precondition for KYC approval, never a
+  substitute for the reviewer's decision.
 - No API keys or runtime secrets belong in this repository.

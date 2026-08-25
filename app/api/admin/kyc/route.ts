@@ -4,6 +4,7 @@ import { getUser } from "../../../auth";
 import { getD1, getDb } from "../../../../db";
 import { kycApplications, kycReviewEvents } from "../../../../db/schema";
 import { isKycAdmin } from "../../../../lib/kyc-admin";
+import { getKycProviderStatus } from "../../../../lib/kyc-provider";
 
 export const dynamic = "force-dynamic";
 const reviewChecks = ["identity", "address", "pan", "liveness", "bank", "sanctions", "edd", "senior_management"] as const;
@@ -16,7 +17,7 @@ export async function GET() {
   const db = getDb();
   const applications = await db.select().from(kycApplications).orderBy(desc(kycApplications.updatedAt)).limit(200);
   const events = await db.select().from(kycReviewEvents).orderBy(desc(kycReviewEvents.createdAt)).limit(300);
-  return NextResponse.json({ applications: applications.map((item) => ({ ...item, evidenceSummary: JSON.parse(item.evidenceSummary), reviewChecks: JSON.parse(item.reviewChecks) })), events });
+  return NextResponse.json({ applications: applications.map((item) => ({ ...item, evidenceSummary: JSON.parse(item.evidenceSummary), reviewChecks: JSON.parse(item.reviewChecks), providerChecks: item.providerChecks ? JSON.parse(item.providerChecks) : null })), events, provider: getKycProviderStatus() });
 }
 
 export async function POST(request: Request) {
@@ -35,6 +36,22 @@ export async function POST(request: Request) {
   if (decision !== "approved" && note.length < 10) return NextResponse.json({ error: "Add a clear client-facing reason." }, { status: 400 });
   const [application] = await getDb().select().from(kycApplications).where(eq(kycApplications.id, applicationId)).limit(1);
   if (!application) return NextResponse.json({ error: "KYC application not found." }, { status: 404 });
+
+  // When a provider is connected its verdict is a precondition for approval:
+  // a failed run cannot be approved at all, and a run that needs review or is
+  // missing entirely requires the reviewer to say why they are overriding it.
+  if (decision === "approved") {
+    const provider = getKycProviderStatus();
+    if (provider.configured) {
+      if (application.providerOutcome === "fail") {
+        return NextResponse.json({ error: `${provider.name} failed this application. It cannot be approved; request corrected evidence or reject it.` }, { status: 400 });
+      }
+      if (application.providerOutcome !== "pass" && note.length < 20) {
+        const state = application.providerOutcome ? `returned "${application.providerOutcome}"` : "has not run";
+        return NextResponse.json({ error: `${provider.name} ${state} for this application. Record how each check was verified manually before approving.` }, { status: 400 });
+      }
+    }
+  }
   const now = Date.now();
   const eventId = crypto.randomUUID();
   const d1 = getD1();

@@ -37,3 +37,92 @@ export function getKycProviderStatus(): KycProviderStatus {
     variables,
   };
 }
+
+export type ProviderCheckResult = { id: string; label: string; outcome: "pass" | "fail" | "review" | "skipped"; detail: string };
+export type ProviderRun = {
+  provider: string;
+  mode: "sandbox" | "live";
+  reference: string;
+  outcome: "pass" | "fail" | "review";
+  checks: ProviderCheckResult[];
+  checkedAt: number;
+};
+
+// Which reviewer attestation each provider check can satisfy. A passing
+// provider result never approves anything on its own; it only tells the
+// reviewer which boxes the automated run supports.
+export const PROVIDER_CHECK_MAP: Record<string, string> = {
+  pan: "pan",
+  identity: "identity",
+  address: "address",
+  liveness: "liveness",
+  sanctions: "sanctions",
+  bank: "bank",
+};
+
+function readEnvValue(key: string) {
+  const workerValue = (env as unknown as Record<string, unknown>)[key];
+  return (typeof workerValue === "string" ? workerValue : process.env[key] ?? "").trim();
+}
+
+type ApplicantInput = { reference: string; fullName: string; birthYear: number; panLast4: string; city: string; state: string; pincode: string; idType: string };
+
+// Submits the application to the configured provider workflow and normalises
+// the response. Returns null when no provider is configured — the caller then
+// stays on the manual path rather than inventing a result.
+export async function runProviderChecks(applicant: ApplicantInput): Promise<ProviderRun | null> {
+  const status = getKycProviderStatus();
+  if (!status.configured || status.mode === "unset") return null;
+
+  const baseUrl = readEnvValue("KYC_PROVIDER_BASE_URL").replace(/\/$/, "");
+  const response = await fetch(`${baseUrl}/workflows/${encodeURIComponent(readEnvValue("KYC_PROVIDER_WORKFLOW_ID"))}/runs`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      appId: readEnvValue("KYC_PROVIDER_APP_ID"),
+      appKey: readEnvValue("KYC_PROVIDER_APP_KEY"),
+    },
+    body: JSON.stringify({
+      transactionId: applicant.reference,
+      applicant: {
+        name: applicant.fullName,
+        birthYear: applicant.birthYear,
+        panLast4: applicant.panLast4,
+        address: { city: applicant.city, state: applicant.state, pincode: applicant.pincode },
+        idType: applicant.idType,
+      },
+    }),
+  });
+
+  if (!response.ok) throw new Error(`The verification provider returned ${response.status}.`);
+  const payload = await response.json() as Record<string, unknown>;
+  const rawChecks = Array.isArray(payload.checks) ? payload.checks as Record<string, unknown>[] : [];
+  const checks: ProviderCheckResult[] = rawChecks.map((item) => ({
+    id: String(item.id ?? ""),
+    label: String(item.label ?? item.id ?? "Check"),
+    outcome: normaliseOutcome(item.status ?? item.outcome),
+    detail: String(item.detail ?? item.reason ?? ""),
+  })).filter((item) => item.id);
+
+  // An unrecognised or missing overall verdict is treated as needing review,
+  // never as a pass.
+  const overall = normaliseOutcome(payload.status ?? payload.outcome);
+  const outcome = checks.some((item) => item.outcome === "fail") ? "fail" : overall === "pass" ? "pass" : overall === "fail" ? "fail" : "review";
+
+  return {
+    provider: status.name,
+    mode: status.mode === "live" ? "live" : "sandbox",
+    reference: String(payload.referenceId ?? payload.transactionId ?? applicant.reference),
+    outcome,
+    checks,
+    checkedAt: Date.now(),
+  };
+}
+
+function normaliseOutcome(value: unknown): ProviderCheckResult["outcome"] {
+  const text = String(value ?? "").toLowerCase();
+  if (["pass", "passed", "approved", "success", "auto_approved"].includes(text)) return "pass";
+  if (["fail", "failed", "rejected", "declined"].includes(text)) return "fail";
+  if (["skip", "skipped", "not_applicable"].includes(text)) return "skipped";
+  return "review";
+}

@@ -19,6 +19,13 @@ export const kycApplications = sqliteTable("kyc_applications", {
   riskLevel: text("risk_level").notNull().default("unrated"),
   reviewNote: text("review_note"),
   reviewChecks: text("review_checks").notNull().default("[]"),
+  // Result of the automated provider run, or null when no provider is
+  // connected. A reviewer still makes the acceptance decision.
+  providerName: text("provider_name"),
+  providerReference: text("provider_reference"),
+  providerOutcome: text("provider_outcome"),
+  providerChecks: text("provider_checks"),
+  providerCheckedAt: integer("provider_checked_at"),
   reviewedBy: text("reviewed_by"),
   submittedAt: integer("submitted_at").notNull(),
   updatedAt: integer("updated_at").notNull(),

@@ -43,3 +43,29 @@
 .admin-provider-actions{display:flex;gap:10px;flex-wrap:wrap}
 .admin-provider-actions a{border:1px solid #403932;background:#13110f;color:#d5cec6;border-radius:999px;padding:12px 18px;font-size:12px;text-decoration:none}
 @media(max-width:850px){.admin-provider-body{padding:28px 20px 50px}.admin-provider-vars,.admin-provider-steps{grid-template-columns:1fr}.admin-provider-list article{flex-wrap:wrap}}
+
+.admin-provider-verdict{margin-top:22px;border:1px solid #2b2722;border-radius:16px;overflow:hidden;background:#0c0b0a}
+.admin-provider-verdict>header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;background:#100e0c}
+.admin-provider-verdict>header span{font-size:10px;letter-spacing:.2em;color:#ff7a35}
+.admin-provider-verdict>header b{font-size:12px;color:#948b81}
+.verdict-line{display:flex;gap:12px;align-items:flex-start;margin:0;padding:16px 18px}
+.verdict-line>i{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:12px;background:#26211c;color:#9a9189}
+.verdict-line>span{display:flex;flex-direction:column;gap:3px}
+.verdict-line b{font-size:14px}
+.verdict-line small{color:#9d948a;font-size:12px;line-height:1.5}
+.admin-provider-verdict.pass .verdict-line>i{background:#173c29;color:#70d69c}
+.admin-provider-verdict.fail .verdict-line>i{background:#3d1a17;color:#ff8176}
+.admin-provider-verdict.review .verdict-line>i{background:#3a2a15;color:#ffb56d}
+.admin-provider-verdict.pass{border-color:#285c42}
+.admin-provider-verdict.fail{border-color:#6b2925}
+.admin-provider-verdict.review{border-color:#684522}
+.admin-provider-verdict ul{list-style:none;margin:0;padding:0;border-top:1px solid #201d19}
+.admin-provider-verdict li{display:flex;gap:11px;align-items:flex-start;padding:11px 18px;border-bottom:1px solid #1a1714}
+.admin-provider-verdict li:last-child{border-bottom:0}
+.admin-provider-verdict li>i{width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:10px;background:#26211c;color:#9a9189}
+.admin-provider-verdict li.pass>i{background:#173c29;color:#70d69c}
+.admin-provider-verdict li.fail>i{background:#3d1a17;color:#ff8176}
+.admin-provider-verdict li.review>i{background:#3a2a15;color:#ffb56d}
+.admin-provider-verdict li>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.admin-provider-verdict li b{font-size:12.5px;font-weight:500}
+.admin-provider-verdict li small{color:#8d857b;font-size:11.5px;line-height:1.45}
