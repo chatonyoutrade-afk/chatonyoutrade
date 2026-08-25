@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getUser } from "../../../auth";
-import { getD1, getDb } from "../../../../db";
+import { getDb } from "../../../../db";
 import { kycApplications, kycReviewEvents } from "../../../../db/schema";
 import { isKycAdmin } from "../../../../lib/kyc-admin";
 import { getKycProviderStatus } from "../../../../lib/kyc-provider";
@@ -53,14 +53,34 @@ export async function POST(request: Request) {
     }
   }
   const now = Date.now();
-  const eventId = crypto.randomUUID();
-  const d1 = getD1();
-  const [updateResult, eventResult] = await d1.batch([
-    d1.prepare("UPDATE kyc_applications SET status = ?, risk_level = ?, review_note = ?, review_checks = ?, reviewed_by = ?, reviewed_at = ?, updated_at = ? WHERE id = ? AND updated_at = ?").bind(decision, riskLevel, note || null, JSON.stringify(checks), user.email, now, now, applicationId, application.updatedAt),
-    d1.prepare("INSERT INTO kyc_review_events (id, application_id, actor_email, action, note, checks, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(eventId, applicationId, user.email, decision, note || null, JSON.stringify(checks), now),
-  ]);
-  // A resubmission between the read and the write changes updated_at, so the
-  // decision does not land on evidence the reviewer never saw.
-  if (Number(updateResult.meta.changes) !== 1 || Number(eventResult.meta.changes) !== 1) return NextResponse.json({ error: "This application changed while you were reviewing it. Reload the queue and decide again." }, { status: 409 });
+  const db = getDb();
+  const updated = await db.transaction(async (tx) => {
+    // A resubmission between the read and the write changes updated_at, so the
+    // decision does not land on evidence the reviewer never saw.
+    const rows = await tx.update(kycApplications).set({
+      status: decision,
+      riskLevel,
+      reviewNote: note || null,
+      reviewChecks: JSON.stringify(checks),
+      reviewedBy: user.email,
+      reviewedAt: now,
+      updatedAt: now,
+    }).where(and(eq(kycApplications.id, applicationId), eq(kycApplications.updatedAt, application.updatedAt))).returning({ id: kycApplications.id });
+
+    if (rows.length !== 1) return false;
+
+    await tx.insert(kycReviewEvents).values({
+      id: crypto.randomUUID(),
+      applicationId,
+      actorEmail: user.email,
+      action: decision,
+      note: note || null,
+      checks: JSON.stringify(checks),
+      createdAt: now,
+    });
+    return true;
+  });
+
+  if (!updated) return NextResponse.json({ error: "This application changed while you were reviewing it. Reload the queue and decide again." }, { status: 409 });
   return NextResponse.json({ ok: true, status: decision, reviewedAt: now });
 }
