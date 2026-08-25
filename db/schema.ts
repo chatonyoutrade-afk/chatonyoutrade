@@ -155,6 +155,9 @@ export const tradingEvents = sqliteTable("trading_events", {
 export const appUsers = sqliteTable("app_users", {
   email: text("email").primaryKey(),
   displayName: text("display_name").notNull(),
+  // Null until the address is proven. KYC is gated on this, so one person
+  // cannot register another person's email and inherit their application.
+  emailVerifiedAt: integer("email_verified_at"),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
   // Stored per user so the work factor can be raised without locking anyone out.
@@ -185,4 +188,25 @@ export const authThrottle = sqliteTable("auth_throttle", {
   lockedUntil: integer("locked_until").notNull().default(0),
 }, (table) => [
   index("idx_auth_throttle_locked_until").on(table.lockedUntil),
+]);
+
+// Single-use tokens for proving an address and for resetting a password. Only
+// the SHA-256 digest is stored, so the table cannot be read to forge a link.
+export const emailVerifications = sqliteTable("email_verifications", {
+  tokenHash: text("token_hash").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+}, (table) => [
+  index("idx_email_verifications_user_email").on(table.userEmail),
+]);
+
+export const passwordResets = sqliteTable("password_resets", {
+  tokenHash: text("token_hash").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at").notNull(),
+  usedAt: integer("used_at"),
+}, (table) => [
+  index("idx_password_resets_user_email").on(table.userEmail),
 ]);

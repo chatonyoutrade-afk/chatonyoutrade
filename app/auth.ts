@@ -5,6 +5,7 @@ export type AppUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  emailVerified: boolean;
 };
 
 const SIGN_IN_PATH = "/login";
@@ -12,7 +13,7 @@ const SIGN_IN_PATH = "/login";
 export async function getUser(): Promise<AppUser | null> {
   const user = await readSessionUser();
   if (!user) return null;
-  return { displayName: user.displayName, email: user.email, fullName: user.displayName };
+  return { displayName: user.displayName, email: user.email, fullName: user.displayName, emailVerified: Boolean(user.emailVerifiedAt) };
 }
 
 export async function requireUser(returnTo: string): Promise<AppUser> {

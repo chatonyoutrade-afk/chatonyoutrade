@@ -28,9 +28,12 @@ const safeApplication = (application: typeof kycApplications.$inferSelect) => ({
   reviewedAt: application.reviewedAt,
 });
 
+const UNVERIFIED = "Confirm your email address before starting KYC.";
+
 export async function GET() {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  if (!user.emailVerified) return NextResponse.json({ error: UNVERIFIED }, { status: 403 });
   const [application] = await getDb().select().from(kycApplications).where(eq(kycApplications.userEmail, user.email)).limit(1);
   return NextResponse.json({ application: application ? safeApplication(application) : null });
 }
@@ -38,6 +41,7 @@ export async function GET() {
 export async function POST(request: Request) {
   const user = await getUser();
   if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  if (!user.emailVerified) return NextResponse.json({ error: UNVERIFIED }, { status: 403 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   const fullName = String(body.fullName ?? "").trim();
   const dob = String(body.dob ?? "");

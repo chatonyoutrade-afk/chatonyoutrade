@@ -57,6 +57,13 @@
       "when": 1787658666265,
       "tag": "0007_fixed_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787659115075,
+      "tag": "0008_ancient_santa_claus",
+      "breakpoints": true
     }
   ]
 }

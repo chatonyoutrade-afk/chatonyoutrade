@@ -18,6 +18,8 @@ function adminEmails() {
   return new Set(configured.length ? configured : defaultAdminEmails);
 }
 
-export function isKycAdmin(user: AppUser | null) {
+// Only the address is consulted, so callers that hold just an email — such as
+// registration, before a session exists — can use this too.
+export function isKycAdmin(user: Pick<AppUser, "email"> | null) {
   return Boolean(user && adminEmails().has(user.email.toLowerCase()));
 }
