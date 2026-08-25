@@ -110,7 +110,7 @@ export async function POST(request: Request) {
   // stored either way and the reviewer sees that no automated run exists.
   let providerError = "";
   try {
-    const run = await runProviderChecks({ reference, fullName, birthYear, panLast4: values.panLast4, city, state, pincode, idType });
+    const run = await runProviderChecks({ reference, fullName, dob, pan });
     if (run) {
       values.providerName = run.provider;
       values.providerReference = run.reference;
@@ -127,4 +127,3 @@ export async function POST(request: Request) {
   await db.insert(kycApplications).values(values).onConflictDoUpdate({ target: kycApplications.userEmail, set: values });
   return NextResponse.json({ ok: true, application: safeApplication(values), providerError: providerError || undefined });
 }
-
