@@ -58,7 +58,7 @@ below belongs in this repository.
 | Variable | Purpose |
 | --- | --- |
 | `EXCHANGE_VAULT_KEY` | AES key for the Binance Testnet credential vault. |
-| `KYC_ADMIN_EMAILS` | Comma-separated reviewer allowlist. Overrides the shipped default. |
+| `KYC_ADMIN_EMAILS` | **Required for admin access.** Comma-separated reviewer allowlist. There is no default: a reviewer address shipped in this repository would be a published string granting access to whoever registers it first. A listed address must also be verified before it counts. |
 | `EMAIL_API_KEY`, `EMAIL_FROM` | Transactional email. Without them, password reset is unavailable and only allowlisted reviewers are verified. |
 | `APP_ORIGIN` | Base URL used in emailed links. Defaults to the request origin. |
 | `PASSWORD_HASH_ITERATIONS` | PBKDF2 work factor. The default costs ~37ms CPU, which exceeds a 10ms Workers free-plan limit. |

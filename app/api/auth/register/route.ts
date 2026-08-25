@@ -7,7 +7,6 @@ import { createSession } from "../../../../lib/session";
 import { checkThrottle, clientKeys, recordFailure } from "../../../../lib/throttle";
 import { issueVerification } from "../../../../lib/tokens";
 import { appOrigin, mailerStatus, sendMail } from "../../../../lib/mailer";
-import { isKycAdmin } from "../../../../lib/kyc-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -45,11 +44,9 @@ export async function POST(request: Request) {
   const { hash, salt, iterations } = await hashPassword(password);
   const now = Date.now();
   const mailer = mailerStatus();
-  // With no mail provider an address cannot be proven, so nobody is verified —
-  // except the server-side reviewer allowlist, which is already a trusted list
-  // of operators and would otherwise be unable to run the deployment at all.
-  const trustedOperator = !mailer.configured && isKycAdmin({ email });
-  await db.insert(appUsers).values({ email, displayName, emailVerifiedAt: trustedOperator ? now : null, passwordHash: hash, passwordSalt: salt, passwordIterations: iterations, createdAt: now, updatedAt: now });
+  // An address is only ever proven by following a link sent to it. Registration
+  // grants nothing on its own, whatever address is submitted.
+  await db.insert(appUsers).values({ email, displayName, emailVerifiedAt: null, passwordHash: hash, passwordSalt: salt, passwordIterations: iterations, createdAt: now, updatedAt: now });
   await createSession(email);
 
   let verificationSent = false;
@@ -58,5 +55,5 @@ export async function POST(request: Request) {
     const link = `${appOrigin(request)}/verify?token=${encodeURIComponent(token)}`;
     verificationSent = await sendMail(email, "Confirm your ChatOnYou Trade email", `Confirm your email address to continue:\n\n${link}\n\nThis link expires in 24 hours. If you did not create this account, ignore this message.`);
   }
-  return NextResponse.json({ ok: true, email, displayName, emailVerified: trustedOperator, verificationSent });
+  return NextResponse.json({ ok: true, email, displayName, emailVerified: false, verificationSent });
 }

@@ -166,6 +166,35 @@ test("first-party accounts, throttling and verification", { timeout: 180_000 }, 
       assert.equal((await fetch(`${BASE}/api/kyc`, { headers: { cookie } })).status, 401, "the cookie must stop resolving after sign-out");
     });
 
+    await t.test("registering a reviewer address does not grant reviewer access", async () => {
+      // The reviewer allowlist is a published-looking string; claiming it by
+      // registration must not reach an applicant's record.
+      const reviewer = "reviewer.claim@example.com";
+      const registered = await json("/api/auth/register", { method: "POST", body: JSON.stringify({ ...REGISTER, email: reviewer }) });
+      assert.equal(registered.status, 200);
+      assert.equal((await registered.json()).emailVerified, false, "registration must never mark an address verified");
+      const cookie = (registered.headers.get("set-cookie") ?? "").split(";")[0];
+      const response = await fetch(`${BASE}/api/admin/kyc`, { headers: { cookie } });
+      assert.equal(response.status, 403);
+      assert.doesNotMatch(await response.text(), /panLast4|fullName/i);
+    });
+
+    await t.test("an unverified reviewer is refused even when allowlisted", () => {
+      // Verification is enforced in isKycAdmin, so an allowlisted but unproven
+      // address is still refused. Guarded here so the check is not dropped.
+      const source = readFileSync(`${projectRoot}lib/kyc-admin.ts`, "utf8");
+      assert.match(source, /!user\.emailVerified/, "isKycAdmin must require a verified address");
+      assert.doesNotMatch(source, /@gmail\.com|@[a-z0-9-]+\.(com|in|org)/i, "no reviewer address may be hard-coded");
+    });
+
+    await t.test("a backslash return path cannot redirect off-site", () => {
+      const source = readFileSync(`${projectRoot}app/auth-return.ts`, "utf8");
+      assert.match(source, /url\.origin !== BASE/, "the return path must be checked by origin, not by prefix");
+      const loginSource = readFileSync(`${projectRoot}app/login/page.tsx`, "utf8");
+      assert.match(loginSource, /safeRelativeReturnPath/, "the sign-in page must use the shared check");
+      assert.doesNotMatch(loginSource, /startsWith\("\/\/"\)/, "the weaker prefix test must not come back");
+    });
+
     await t.test("password reset refuses to pretend when no mail provider is configured", async () => {
       const response = await json("/api/auth/reset", { method: "POST", body: JSON.stringify({ email: "case.user@example.com" }) });
       assert.equal(response.status, 503);

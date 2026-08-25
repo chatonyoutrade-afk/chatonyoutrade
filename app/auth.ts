@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { readSessionUser } from "../lib/session";
+import { safeRelativeReturnPath } from "./auth-return";
 
 export type AppUser = {
   displayName: string;
@@ -26,17 +27,4 @@ export function signInPath(returnTo: string): string {
   return `${SIGN_IN_PATH}?return_to=${encodeURIComponent(safeRelativeReturnPath(returnTo))}`;
 }
 
-// Only same-origin relative paths are accepted, so a crafted return_to cannot
-// bounce a signed-in user to another site.
-export function safeRelativeReturnPath(value: string): string {
-  if (!value.startsWith("/") || value.startsWith("//")) return "/";
-  let url: URL;
-  try {
-    url = new URL(value, "https://app.local");
-  } catch {
-    return "/";
-  }
-  if (url.origin !== "https://app.local") return "/";
-  if (url.pathname === SIGN_IN_PATH) return "/";
-  return `${url.pathname}${url.search}${url.hash}`;
-}
+export { safeRelativeReturnPath };

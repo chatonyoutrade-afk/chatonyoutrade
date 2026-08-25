@@ -3,23 +3,22 @@ import type { AppUser } from "../app/auth";
 
 // Reviewers allowed to open /admin/kyc and /admin/kyc/provider.
 //
-// KYC_ADMIN_EMAILS on the deployment overrides this list entirely, so
-// reviewers can be added or removed later without a code change. The list
-// below is what applies when that variable is not set.
+// KYC_ADMIN_EMAILS must be set on the deployment: a comma-separated list of
+// exact account emails. There is deliberately no default. A default shipped in
+// this repository would be a published string that grants reviewer access to
+// whoever registers it first, because reviewer status is decided by matching
+// the address on a signed-in account.
 //
-// Both Gmail spellings of the owner address are included because the
-// comparison is an exact string match against the signed-in account.
-const defaultAdminEmails = ["sumit.khatod1990@gmail.com", "sumitkhatod1990@gmail.com"];
-
+// Membership alone is not enough. The address must also be proven, so that
+// registering a known reviewer email cannot by itself reach an applicant's
+// name, PAN fragment or address.
 function adminEmails() {
   const workerValue = (env as unknown as Record<string, unknown>).KYC_ADMIN_EMAILS;
   const value = typeof workerValue === "string" ? workerValue : process.env.KYC_ADMIN_EMAILS ?? "";
-  const configured = value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean);
-  return new Set(configured.length ? configured : defaultAdminEmails);
+  return new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
 }
 
-// Only the address is consulted, so callers that hold just an email — such as
-// registration, before a session exists — can use this too.
-export function isKycAdmin(user: Pick<AppUser, "email"> | null) {
-  return Boolean(user && adminEmails().has(user.email.toLowerCase()));
+export function isKycAdmin(user: AppUser | null) {
+  if (!user || !user.emailVerified) return false;
+  return adminEmails().has(user.email.toLowerCase());
 }

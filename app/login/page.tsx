@@ -1,13 +1,16 @@
 "use client";
 import { FormEvent, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { safeRelativeReturnPath } from "../auth-return";
 
 type View = "login" | "signup" | "forgot" | "sent";
 
 export default function Login(){
  const searchParams=useSearchParams();
- const requested=searchParams.get("return_to")||"";
- const returnTo=requested.startsWith("/")&&!requested.startsWith("//")?requested:"/trade";
+ // A prefix test is not enough: browsers fold a backslash into a slash, so
+ // "/\\evil.com" passes startsWith("/") and then navigates off-site. Resolving
+ // against a fixed base and comparing origins is what actually rejects it.
+ const returnTo=safeRelativeReturnPath(searchParams.get("return_to")||"","/trade");
  const [view,setView]=useState<View>(searchParams.get("view")==="signup"?"signup":"login");
  const [email,setEmail]=useState(""),[password,setPassword]=useState(""),[name,setName]=useState("");
  const [show,setShow]=useState(false),[agree,setAgree]=useState(true),[loading,setLoading]=useState(false),[notice,setNotice]=useState("");
