@@ -6,8 +6,8 @@ export const dynamic = "force-dynamic";
 
 const providerChecks = [
   { id: "pan", label: "PAN verification", text: "Connected now: PAN validity, exact name and date-of-birth match.", automated: true },
-  { id: "identity", label: "Identity document", text: "DigiLocker consent flow still needs to be implemented.", automated: false },
-  { id: "address", label: "Address proof", text: "DigiLocker document retrieval and address matching are not active yet.", automated: false },
+  { id: "identity", label: "Identity document", text: "DigiLocker consent and document availability are integrated; reviewer matching remains required.", automated: true },
+  { id: "address", label: "Address proof", text: "DigiLocker consent is integrated; address matching remains a reviewer step.", automated: false },
   { id: "liveness", label: "Selfie and liveness", text: "A supported liveness provider or approved manual process is required.", automated: false },
   { id: "sanctions", label: "AML, sanctions and PEP", text: "A screening provider or approved manual search process is required.", automated: false },
   { id: "bank", label: "Bank-account name", text: "Sandbox bank verification will follow account/IFSC collection.", automated: false },
@@ -49,7 +49,7 @@ export default async function KycProviderPage() {
 
       <section className="admin-provider-section"><header><span>REQUIRED ENVIRONMENT VARIABLES</span><b>{status.missing.length ? `${status.missing.length} missing` : "All present"}</b></header><div className="admin-provider-vars">{status.variables.map((item) => <article key={item.key} className={item.present ? "present" : "missing"}><header><i>{item.present ? "✓" : "!"}</i><code>{item.key}</code>{item.secret ? <em>Secret</em> : null}</header><p>{item.text}</p><small>{item.present ? "Configured on this deployment" : "Not set on this deployment"}</small></article>)}</div><p className="admin-provider-note">Only presence is shown. Credential values are read inside the worker and are never returned to a browser.</p></section>
 
-      <section className="admin-provider-section"><header><span>MANDATORY CHECK COVERAGE</span><b>1 of {providerChecks.length} automated</b></header><div className="admin-provider-list">{providerChecks.map((item) => { const ready = status.configured && item.automated; return <article key={item.id} className={ready ? "ready" : ""}><i>{ready ? "✓" : "○"}</i><div><b>{item.label}</b><p>{item.text}</p></div><em>{ready ? (status.mode === "live" ? "Live" : "Sandbox") : "Pending"}</em></article>; })}</div></section>
+      <section className="admin-provider-section"><header><span>MANDATORY CHECK COVERAGE</span><b>2 of {providerChecks.length} integrated</b></header><div className="admin-provider-list">{providerChecks.map((item) => { const ready = status.configured && item.automated; return <article key={item.id} className={ready ? "ready" : ""}><i>{ready ? "✓" : "○"}</i><div><b>{item.label}</b><p>{item.text}</p></div><em>{ready ? (status.mode === "live" ? "Live" : "Sandbox") : "Pending"}</em></article>; })}</div></section>
 
       <section className="admin-provider-section"><header><span>ALWAYS MANUAL</span><b>Reviewer responsibility</b></header><div className="admin-provider-list">{manualChecks.map((item) => <article key={item.label}><i>◆</i><div><b>{item.label}</b><p>{item.text}</p></div><em>Human</em></article>)}</div></section>
 
