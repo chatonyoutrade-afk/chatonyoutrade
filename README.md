@@ -40,6 +40,7 @@ below belongs in this repository.
 | `EMAIL_API_KEY`, `EMAIL_FROM` | Transactional email. Without them, password reset is unavailable and only allowlisted reviewers are verified. |
 | `APP_ORIGIN` | Base URL used in emailed links. Defaults to the request origin. |
 | `PASSWORD_HASH_ITERATIONS` | PBKDF2 work factor. The default costs ~37ms CPU, which exceeds a 10ms Workers free-plan limit. |
+| `BINANCE_DATA_BASE_URL` | Candle feed host. Defaults to the public Binance data API; overridden in tests to serve fixture candles. |
 | `KYC_PROVIDER`, `KYC_PROVIDER_MODE`, `KYC_PROVIDER_BASE_URL`, `KYC_PROVIDER_WORKFLOW_ID`, `KYC_PROVIDER_APP_ID`, `KYC_PROVIDER_APP_KEY` | Identity verification provider. Status is visible at `/admin/kyc/provider`. |
 
 ## Safety

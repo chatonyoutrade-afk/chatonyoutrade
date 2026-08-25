@@ -22,6 +22,7 @@ const localBindingConfig = {
     KYC_PROVIDER_WORKFLOW_ID: process.env.KYC_PROVIDER_WORKFLOW_ID ?? "",
     KYC_PROVIDER_APP_ID: process.env.KYC_PROVIDER_APP_ID ?? "",
     KYC_PROVIDER_APP_KEY: process.env.KYC_PROVIDER_APP_KEY ?? "",
+    BINANCE_DATA_BASE_URL: process.env.BINANCE_DATA_BASE_URL ?? "",
   },
   d1_databases: d1
     ? [

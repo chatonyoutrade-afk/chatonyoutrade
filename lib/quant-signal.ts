@@ -1,3 +1,14 @@
+import { env } from "cloudflare:workers";
+
+// The public candle host, overridable so the risk engine can be exercised
+// against fixture candles in tests. Never point this at an untrusted host.
+const DEFAULT_CANDLE_HOST = "https://data-api.binance.vision";
+function candleHost() {
+  const workerValue = (env as unknown as Record<string, unknown>).BINANCE_DATA_BASE_URL;
+  const value = (typeof workerValue === "string" ? workerValue : process.env.BINANCE_DATA_BASE_URL ?? "").trim();
+  return (value || DEFAULT_CANDLE_HOST).replace(/\/$/, "");
+}
+
 export type QuantSignal={asset:string;symbol:string;signal:"BUY"|"SELL"|"NO TRADE";confidence:number;entry:number;stopLoss:number|null;takeProfit:number|null;riskPct:number;trend:"Bullish"|"Bearish"|"Neutral";reasons:string[];indicators:{ema9:number;ema21:number;rsi14:number;macd:number;macdSignal:number;atr14:number;volumeRatio:number};generatedAt:number;source:string};
 type Candle={open:number;high:number;low:number;close:number;volume:number};
 const allowed=new Set(["BTC","ETH","SOL","BNB"]),cache=new Map<string,{expires:number,value:QuantSignal}>();
@@ -9,7 +20,7 @@ const round=(value:number,digits=2)=>Number(value.toFixed(digits));
 
 export async function getQuantSignal(input:string):Promise<QuantSignal>{
  const asset=input.toUpperCase().replace("USDT","");if(!allowed.has(asset))throw new Error("Unsupported crypto market");const cached=cache.get(asset);if(cached&&cached.expires>Date.now())return cached.value;
- const symbol=asset+"USDT",response=await fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1m&limit=100`,{cache:"no-store"});if(!response.ok)throw new Error("Binance candle feed unavailable");
+ const symbol=asset+"USDT",response=await fetch(`${candleHost()}/api/v3/klines?symbol=${symbol}&interval=1m&limit=100`,{cache:"no-store"});if(!response.ok)throw new Error("Binance candle feed unavailable");
  const rows=await response.json() as unknown[][],candles:Candle[]=rows.map(row=>({open:Number(row[1]),high:Number(row[2]),low:Number(row[3]),close:Number(row[4]),volume:Number(row[5])}));if(candles.length<35)throw new Error("Insufficient candle history");
  const closes=candles.map(item=>item.close),ema9Series=emaSeries(closes,9),ema21Series=emaSeries(closes,21),ema12=emaSeries(closes,12),ema26=emaSeries(closes,26),macdSeries=ema12.map((item,index)=>item-ema26[index]),macdSignalSeries=emaSeries(macdSeries,9);
  const entry=closes.at(-1)!,ema9=ema9Series.at(-1)!,ema21=ema21Series.at(-1)!,rsi14=rsi(closes),macd=macdSeries.at(-1)!,macdSignal=macdSignalSeries.at(-1)!,atr14=atr(candles),recentVolumes=candles.slice(-21,-1).map(item=>item.volume),averageVolume=recentVolumes.reduce((sum,item)=>sum+item,0)/recentVolumes.length,volumeRatio=candles.at(-1)!.volume/Math.max(averageVolume,.000001);

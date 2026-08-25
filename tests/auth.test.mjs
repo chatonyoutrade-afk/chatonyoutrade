@@ -5,6 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+// This suite owns the shared dev D1 file while it runs, so the test runner
+// must stay single-threaded: see the --test-concurrency=1 in npm test.
 const projectRoot = fileURLToPath(new URL("..", import.meta.url));
 const BASE = process.env.CHATONYOU_TEST_BASE_URL ?? "http://127.0.0.1:4174";
 const D1_DIR = `${projectRoot}.wrangler/state/v3/d1/miniflare-D1DatabaseObject`;
