@@ -174,3 +174,15 @@ export const appSessions = sqliteTable("app_sessions", {
   index("idx_app_sessions_user_email").on(table.userEmail),
   index("idx_app_sessions_expires_at").on(table.expiresAt),
 ]);
+
+// Failed-attempt counters for sign-in and registration. Keyed by email and by
+// client IP separately, so one attacker cannot spray many emails from one
+// address and one email cannot be locked out from many addresses cheaply.
+export const authThrottle = sqliteTable("auth_throttle", {
+  key: text("key").primaryKey(),
+  failures: integer("failures").notNull(),
+  firstFailureAt: integer("first_failure_at").notNull(),
+  lockedUntil: integer("locked_until").notNull().default(0),
+}, (table) => [
+  index("idx_auth_throttle_locked_until").on(table.lockedUntil),
+]);

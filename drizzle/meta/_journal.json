@@ -50,6 +50,13 @@
       "when": 1787657987745,
       "tag": "0006_kind_exiles",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787658666265,
+      "tag": "0007_fixed_iron_lad",
+      "breakpoints": true
     }
   ]
 }

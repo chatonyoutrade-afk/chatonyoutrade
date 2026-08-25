@@ -4,6 +4,7 @@ import { getDb } from "../../../../db";
 import { appUsers } from "../../../../db/schema";
 import { hashPassword } from "../../../../lib/password";
 import { createSession } from "../../../../lib/session";
+import { checkThrottle, clientKeys, recordFailure } from "../../../../lib/throttle";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,16 @@ const MIN_PASSWORD_LENGTH = 10;
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  // Registration reveals whether an email is already taken, which is a known
+  // enumeration trade-off. Throttling by IP keeps that from being usable at
+  // scale; removing the leak entirely needs a verification email instead.
+  const throttle = await checkThrottle(clientKeys(request, ""));
+  if (throttle.blocked) {
+    return NextResponse.json(
+      { error: `Too many attempts. Try again in ${Math.ceil(throttle.retryAfterSeconds / 60)} minutes.` },
+      { status: 429, headers: { "retry-after": String(throttle.retryAfterSeconds) } },
+    );
+  }
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   const displayName = String(body.displayName ?? "").trim();
@@ -23,7 +34,10 @@ export async function POST(request: Request) {
 
   const db = getDb();
   const [existing] = await db.select({ email: appUsers.email }).from(appUsers).where(eq(appUsers.email, email)).limit(1);
-  if (existing) return NextResponse.json({ error: "An account already exists for this email. Sign in instead." }, { status: 409 });
+  if (existing) {
+    await recordFailure(clientKeys(request, ""));
+    return NextResponse.json({ error: "An account already exists for this email. Sign in instead." }, { status: 409 });
+  }
 
   const { hash, salt, iterations } = await hashPassword(password);
   const now = Date.now();
