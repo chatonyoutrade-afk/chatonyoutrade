@@ -78,15 +78,14 @@ export default function PaperOrder(){
   const profitPct=entry>0&&target>0?Math.abs((target-entry)/entry)*100:0;
   const maxLoss=amount*lossPct/100,potential=amount*profitPct/100;
   const riskReward=maxLoss?potential/maxLoss:0;
-
   useEffect(()=>{
     if(!feedLive||!signal){setRiskChecks([]);setRiskAllowed(false);setRiskLoading(false);return}
     setRiskLoading(true);
     const timer=window.setTimeout(()=>{
       fetch("/api/trades",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"validate",asset,side,amount,entryPrice:signal.entry,stopPrice:stop,targetPrice:target,confidence:signal.confidence,signalGeneratedAt:signal.generatedAt})})
-        .then(response=>response.json())
+        .then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Server risk validation failed");return data})
         .then(data=>{setRiskChecks(data.checks||[]);setRiskAllowed(Boolean(data.allowed));setServerRiskUsage(data.risk?.maxRiskPaise?Math.min(100,data.risk.riskPaise/data.risk.maxRiskPaise*100):0)})
-        .catch(()=>{setRiskAllowed(false);setError("The risk engine could not synchronize.")})
+        .catch(reason=>{const detail=reason instanceof Error?reason.message:"The risk engine could not synchronize.";setRiskAllowed(false);setRiskChecks([{id:"sync",label:"Live market verification",ok:false,detail}]);setError(detail)})
         .finally(()=>setRiskLoading(false));
     },280);
     return()=>window.clearTimeout(timer);
