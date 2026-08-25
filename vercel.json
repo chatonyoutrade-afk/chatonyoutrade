@@ -12,6 +12,7 @@
     { "source": "/setup", "destination": "https://chatonyou.com/setup", "permanent": false },
     { "source": "/kyc", "destination": "https://chatonyou.com/kyc", "permanent": false },
     { "source": "/kyc/:path*", "destination": "https://chatonyou.com/kyc/:path*", "permanent": false },
+    { "source": "/admin/:path*", "destination": "https://chatonyou.com/admin/:path*", "permanent": false },
     { "source": "/signin-with-chatgpt", "destination": "https://chatonyou.com/signin-with-chatgpt", "permanent": false },
     { "source": "/signout-with-chatgpt", "destination": "https://chatonyou.com/signout-with-chatgpt", "permanent": false },
     { "source": "/callback", "destination": "https://chatonyou.com/callback", "permanent": false }
