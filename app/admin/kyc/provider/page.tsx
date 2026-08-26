@@ -57,7 +57,7 @@ export default async function KycProviderPage() {
 
       <section className="admin-provider-section"><header><span>ACTIVATION SEQUENCE</span><b>Sandbox before live</b></header><div className="admin-provider-steps">{setupSteps.map((item) => <article key={item.step}><span>{item.step}</span><div><b>{item.title}</b><p>{item.text}</p></div></article>)}</div></section>
 
-      <div className="admin-provider-actions"><a href="/admin/kyc">Back to review queue</a><a href="/compliance">Compliance readiness</a></div>
+      <div className="admin-provider-actions"><a href="/admin/kyc">Back to review queue</a><a href="/admin/launch-review">Launch review pack</a><a href="/compliance">Compliance readiness</a></div>
     </section>
 
     <footer className="admin-kyc-footer">Real-money trading stays disabled. Provider activation alone does not clear the compliance gates listed on the readiness page.</footer>
