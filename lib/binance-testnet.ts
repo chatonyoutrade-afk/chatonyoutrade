@@ -1,4 +1,5 @@
 const TESTNET_API = "https://testnet.binance.vision/api";
+export const SAFE_TESTNET_QUOTE_MIN = 10;
 
 export type BinanceBalance = { asset: string; free: string; locked: string };
 export type BinanceTestnetAccount = { canTrade: boolean; permissions?: string[]; balances?: BinanceBalance[] };
@@ -51,14 +52,20 @@ async function getSymbolRules(symbol: string): Promise<SymbolRules> {
 }
 function decimals(step: number) { const value = step.toFixed(12).replace(/0+$/, ""); return value.includes(".") ? value.split(".")[1].length : 0; }
 function floorTo(value: number, step: number) { return (Math.floor((value + Number.EPSILON) / step) * step).toFixed(decimals(step)); }
+function netBaseQuantity(order: BinanceOrder, baseAsset: string) {
+  const executed = Number(order.executedQty || 0);
+  const baseCommission = (order.fills || []).reduce((sum, fill) => sum + (fill.commissionAsset === baseAsset ? Number(fill.commission || 0) : 0), 0);
+  return Math.max(0, executed - baseCommission);
+}
 
 export async function placeProtectedTestnetBuy(input: { apiKey: string; apiSecret: string; asset: string; quoteAmount: number; stopPrice: number; targetPrice: number; clientOrderId: string }) {
   const symbol = `${input.asset}USDT`, rules = await getSymbolRules(symbol);
-  if (input.quoteAmount < rules.minNotional) throw new Error(`Minimum Testnet order is ${rules.minNotional} USDT`);
+  const safeMinimum = Math.max(SAFE_TESTNET_QUOTE_MIN, rules.minNotional * 2);
+  if (input.quoteAmount < safeMinimum) throw new Error(`Minimum protected Testnet order is ${safeMinimum} USDT`);
   const entry = await signedRequest<BinanceOrder>(input.apiKey, input.apiSecret, "/v3/order", "POST", { symbol, side: "BUY", type: "MARKET", quoteOrderQty: input.quoteAmount.toFixed(2), newClientOrderId: input.clientOrderId, newOrderRespType: "FULL" });
   const executedQty = Number(entry.executedQty), quoteFilled = Number(entry.cummulativeQuoteQty);
   if (!Number.isFinite(executedQty) || executedQty <= 0) return { entry, protection: null, warning: "Entry accepted but not filled yet", entryPrice: 0, protectedQuantity: 0 };
-  const entryPrice = quoteFilled > 0 ? quoteFilled / executedQty : Number(entry.fills?.[0]?.price || 0), protectedQuantity = floorTo(executedQty * 0.999, rules.stepSize);
+  const entryPrice = quoteFilled > 0 ? quoteFilled / executedQty : Number(entry.fills?.[0]?.price || 0), protectedQuantity = floorTo(netBaseQuantity(entry, input.asset), rules.stepSize);
   try {
     const protection = await signedRequest<BinanceOrderList>(input.apiKey, input.apiSecret, "/v3/orderList/oco", "POST", { symbol, side: "SELL", quantity: protectedQuantity, aboveType: "LIMIT_MAKER", abovePrice: floorTo(input.targetPrice, rules.tickSize), belowType: "STOP_LOSS", belowStopPrice: floorTo(input.stopPrice, rules.tickSize), listClientOrderId: `${input.clientOrderId.slice(0, 28)}P`, newOrderRespType: "FULL" });
     return { entry, protection, warning: null, entryPrice, protectedQuantity: Number(protectedQuantity) };
@@ -69,8 +76,19 @@ export async function placeProtectedTestnetBuy(input: { apiKey: string; apiSecre
 
 export async function closeTestnetPosition(input: { apiKey: string; apiSecret: string; symbol: string; quantity: number; orderListId?: string | null; clientOrderId: string }) {
   if (input.orderListId) await signedRequest<BinanceOrderList>(input.apiKey, input.apiSecret, "/v3/orderList", "DELETE", { symbol: input.symbol, orderListId: input.orderListId }).catch(() => null);
-  const rules = await getSymbolRules(input.symbol), quantity = floorTo(input.quantity, rules.stepSize);
-  return signedRequest<BinanceOrder>(input.apiKey, input.apiSecret, "/v3/order", "POST", { symbol: input.symbol, side: "SELL", type: "MARKET", quantity, newClientOrderId: input.clientOrderId, newOrderRespType: "FULL" });
+  const rules = await getSymbolRules(input.symbol), baseAsset = input.symbol.replace(/USDT$/, ""), quantity = floorTo(input.quantity, rules.stepSize);
+  try {
+    const order = await signedRequest<BinanceOrder>(input.apiKey, input.apiSecret, "/v3/order", "POST", { symbol: input.symbol, side: "SELL", type: "MARKET", quantity, newClientOrderId: input.clientOrderId, newOrderRespType: "FULL" });
+    return { order, rescueQuoteCost: 0 };
+  } catch (reason) {
+    const message = reason instanceof Error ? reason.message : "";
+    if (!message.includes("NOTIONAL")) throw reason;
+    const rescueQuoteCost = Math.max(SAFE_TESTNET_QUOTE_MIN, rules.minNotional * 2);
+    const rescue = await signedRequest<BinanceOrder>(input.apiKey, input.apiSecret, "/v3/order", "POST", { symbol: input.symbol, side: "BUY", type: "MARKET", quoteOrderQty: rescueQuoteCost.toFixed(2), newClientOrderId: `${input.clientOrderId.slice(0, 30)}T`, newOrderRespType: "FULL" });
+    const combinedQuantity = floorTo(input.quantity + netBaseQuantity(rescue, baseAsset), rules.stepSize);
+    const order = await signedRequest<BinanceOrder>(input.apiKey, input.apiSecret, "/v3/order", "POST", { symbol: input.symbol, side: "SELL", type: "MARKET", quantity: combinedQuantity, newClientOrderId: `${input.clientOrderId.slice(0, 30)}R`, newOrderRespType: "FULL" });
+    return { order, rescueQuoteCost: Number(rescue.cummulativeQuoteQty || rescueQuoteCost) };
+  }
 }
 export async function queryTestnetOrderList(apiKey: string, apiSecret: string, orderListId: string) { return signedRequest<BinanceOrderList>(apiKey, apiSecret, "/v3/orderList", "GET", { orderListId }); }
 export async function queryTestnetOrder(apiKey: string, apiSecret: string, symbol: string, orderId: string) { return signedRequest<BinanceOrder>(apiKey, apiSecret, "/v3/order", "GET", { symbol, orderId }); }
