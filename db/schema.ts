@@ -241,6 +241,26 @@ export const ownerSecurity = sqliteTable("owner_security", {
   index("idx_owner_security_challenge_expiry").on(table.challengeExpiresAt),
 ]);
 
+// Metadata-only register for external launch evidence. Signed documents remain
+// in the organisation's controlled document system; only references are kept.
+export const complianceEvidence = sqliteTable("compliance_evidence", {
+  id: text("id").primaryKey(),
+  category: text("category").notNull(),
+  title: text("title").notNull(),
+  reference: text("reference").notNull(),
+  issuer: text("issuer").notNull(),
+  status: text("status").notNull().default("recorded"),
+  documentDate: integer("document_date"),
+  expiresAt: integer("expires_at"),
+  note: text("note"),
+  addedBy: text("added_by").notNull(),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [
+  index("idx_compliance_evidence_category_updated").on(table.category, table.updatedAt),
+  index("idx_compliance_evidence_status_expiry").on(table.status, table.expiresAt),
+]);
+
 // Failed-attempt counters for sign-in and registration. Keyed by email and by
 // client IP separately, so one attacker cannot spray many emails from one
 // address and one email cannot be locked out from many addresses cheaply.

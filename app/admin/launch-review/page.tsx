@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { eq } from "drizzle-orm";
 import { requireUser } from "../../auth";
 import { getDb } from "../../../db";
-import { exchangeConnections, kycApplications, ownerSecurity, paperSettings, testnetOrders } from "../../../db/schema";
+import { complianceEvidence, exchangeConnections, kycApplications, ownerSecurity, paperSettings, testnetOrders } from "../../../db/schema";
 import { isKycAdmin } from "../../../lib/kyc-admin";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +26,12 @@ export default async function LaunchReviewPage({ searchParams }: PageProps) {
 
   if (!selected) return <main className="admin-kyc-shell"><header className="admin-kyc-top"><a href="/"><img src="/chatonyou-logo.png" alt="ChatOnYou"/><b>TRADE</b></a><span>NEOCRAFT LLP · LAUNCH CONTROL</span><div><a href="/admin/kyc">KYC queue</a><a href="/logout">Sign out</a></div></header><section className="admin-access-denied"><i>◇</i><span>NO CLIENT EVIDENCE</span><h1>No KYC application found.</h1><p>A client must submit KYC before a launch-readiness pack can be assembled.</p><a href="/admin/kyc">Open KYC queue</a></section></main>;
 
-  const [settingsRows, connections, securityRows, orders] = await Promise.all([
+  const [settingsRows, connections, securityRows, orders, evidenceRows] = await Promise.all([
     db.select().from(paperSettings).where(eq(paperSettings.userEmail, selected.userEmail)).limit(1),
     db.select().from(exchangeConnections).where(eq(exchangeConnections.userEmail, selected.userEmail)).limit(1),
     db.select().from(ownerSecurity).where(eq(ownerSecurity.userEmail, selected.userEmail)).limit(1),
     db.select().from(testnetOrders).where(eq(testnetOrders.userEmail, selected.userEmail)),
+    db.select().from(complianceEvidence),
   ]);
   const settings = settingsRows[0], connection = connections[0], security = securityRows[0];
   const closed = orders.filter(item => item.status === "closed");
@@ -48,11 +49,11 @@ export default async function LaunchReviewPage({ searchParams }: PageProps) {
   ];
   const passed = checks.filter(item => item.passed).length;
   const legal = [
-    "Qualified counsel confirms the proposed VDA service classification",
-    "FIU-IND registration/RE-ID and responsible-officer evidence is on file",
-    "AML/CFT, sanctions, Travel Rule and record-retention policies are approved",
-    "CERT-In security audit and incident-response evidence is current",
-    "Custody, exchange, tax and customer-funds operating model is independently reviewed",
+    { category: "legal", text: "Qualified counsel confirms the proposed VDA service classification" },
+    { category: "fiu", text: "FIU-IND registration/RE-ID and responsible-officer evidence is on file" },
+    { category: "aml", text: "AML/CFT, sanctions, Travel Rule and record-retention policies are approved" },
+    { category: "security", text: "CERT-In security audit and incident-response evidence is current" },
+    { category: "operations", text: "Custody, exchange, tax and customer-funds operating model is independently reviewed" },
   ];
 
   return <main className="admin-kyc-shell launch-review-shell">
@@ -61,7 +62,7 @@ export default async function LaunchReviewPage({ searchParams }: PageProps) {
     <nav className="launch-client-tabs" aria-label="Client readiness packs">{applications.map(item => <a className={item.id === selected.id ? "active" : ""} href={`/admin/launch-review?client=${encodeURIComponent(item.userEmail)}`} key={item.id}><b>{item.fullName}</b><small>{item.userEmail} · {item.status.replace("_", " ")}</small></a>)}</nav>
     <section className="launch-review-grid">
       <div className="launch-review-panel"><header><span>AUTOMATED TECHNICAL EVIDENCE</span><b>{selected.reference}</b></header>{checks.map(item => <article className={item.passed ? "passed" : "blocked"} key={item.title}><i>{item.passed ? "✓" : "!"}</i><div><b>{item.title}</b><p>{item.detail}</p></div><a href={item.href}>{item.passed ? "Review" : "Resolve"}</a></article>)}</div>
-      <aside className="launch-review-panel legal"><header><span>EXTERNAL SIGN-OFF</span><b>Never automated</b></header>{legal.map(item => <article key={item}><i>○</i><p>{item}</p></article>)}<div className="launch-legal-note"><b>Evidence required</b><p>Attach signed opinions, registration records, audit reports and policy approvals in the organisation’s controlled document system. A checkbox in this product is not legal approval.</p></div></aside>
+      <aside className="launch-review-panel legal"><header><span>EXTERNAL SIGN-OFF EVIDENCE</span><b>Human-reviewed</b></header>{legal.map(item => { const evidence = evidenceRows.find(row => row.category === item.category && row.status === "reviewed" && (!row.expiresAt || row.expiresAt > Date.now())); return <article key={item.category} className={evidence ? "passed" : ""}><i>{evidence ? "✓" : "○"}</i><div><p>{item.text}</p>{evidence ? <small>{evidence.reference} · {evidence.issuer}</small> : null}</div></article> })}<div className="launch-legal-note"><b>Evidence required</b><p>Original signed evidence stays in the organisation’s controlled document system. A saved reference documents review but does not itself grant legal approval.</p><a href="/admin/compliance-evidence">Open evidence register →</a></div></aside>
     </section>
     <section className="launch-decision"><div><span>FINAL SYSTEM DECISION</span><h2>LIVE EXECUTION REMAINS LOCKED</h2><p>{passed === checks.length ? "Technical evidence is ready for independent compliance and legal review." : `${checks.length - passed} automated gate${checks.length - passed === 1 ? "" : "s"} must still be resolved before external review.`}</p></div><button disabled>Enable real-money trading</button></section>
     <footer className="admin-kyc-footer">Review pack generated {new Date().toLocaleString("en-IN")} · No production exchange endpoint or withdrawal capability is enabled.</footer>
