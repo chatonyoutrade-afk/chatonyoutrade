@@ -223,6 +223,24 @@ export const appSessions = sqliteTable("app_sessions", {
   index("idx_app_sessions_expires_at").on(table.expiresAt),
 ]);
 
+// Email possession is verified as a separate step after password sign-in.
+// The short code is PBKDF2-hashed and expires quickly; plaintext is never saved.
+export const ownerSecurity = sqliteTable("owner_security", {
+  userEmail: text("user_email").primaryKey(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(false),
+  verifiedAt: integer("verified_at"),
+  codeHash: text("code_hash"),
+  codeSalt: text("code_salt"),
+  codeIterations: integer("code_iterations"),
+  challengeIssuedAt: integer("challenge_issued_at"),
+  challengeExpiresAt: integer("challenge_expires_at"),
+  failures: integer("failures").notNull().default(0),
+  lockedUntil: integer("locked_until").notNull().default(0),
+  updatedAt: integer("updated_at").notNull(),
+}, (table) => [
+  index("idx_owner_security_challenge_expiry").on(table.challengeExpiresAt),
+]);
+
 // Failed-attempt counters for sign-in and registration. Keyed by email and by
 // client IP separately, so one attacker cannot spray many emails from one
 // address and one email cannot be locked out from many addresses cheaply.
