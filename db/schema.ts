@@ -123,6 +123,7 @@ export const paperTrades = sqliteTable("paper_trades", {
   status: text("status").notNull().default("open"),
   pnlPaise: integer("pnl_paise").notNull().default(0),
   exitPrice: real("exit_price"),
+  closeReason: text("close_reason"),
   closedAt: integer("closed_at"),
   createdAt: integer("created_at").notNull(),
 });

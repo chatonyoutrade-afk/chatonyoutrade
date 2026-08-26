@@ -15,6 +15,26 @@ const MAX_ENTRY_DRIFT_PCT = 0.35;   // reviewed entry vs live entry
 
 export async function GET(){const user=await getUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});await ensurePaperAccount(user.email,user.displayName);return NextResponse.json({trades:await listPaperTrades(user.email)})}
 
+async function settleOpenTrade(email:string,id:string,exitPrice:number,closeReason:"manual"|"stop_loss"|"take_profit"){
+ const db=getDb(),[trade]=await db.select().from(paperTrades).where(and(eq(paperTrades.id,id),eq(paperTrades.userEmail,email))).limit(1);
+ if(!trade||trade.status!=="open")return null;
+ const direction=trade.side==="SELL"?-1:1,rawPnl=trade.amountPaise*((exitPrice-trade.entryPrice)/trade.entryPrice)*direction;
+ const pnlPaise=Math.max(-trade.amountPaise,Math.round(rawPnl)),settlementPaise=trade.amountPaise+pnlPaise,now=Date.now();
+ await db.transaction(async(tx)=>{
+  const [closed]=await tx.update(paperTrades).set({status:"closed",pnlPaise,exitPrice,closeReason,closedAt:now}).where(and(eq(paperTrades.id,id),eq(paperTrades.userEmail,email),eq(paperTrades.status,"open"))).returning({id:paperTrades.id});
+  if(!closed)throw new Error("POSITION_CHANGED");
+  const [credited]=await tx.update(paperAccounts).set({balancePaise:sql`${paperAccounts.balancePaise} + ${settlementPaise}`,updatedAt:now}).where(eq(paperAccounts.userEmail,email)).returning({userEmail:paperAccounts.userEmail});
+  if(!credited)throw new Error("ACCOUNT_MISSING");
+ });
+ return {id,pnlPaise,exitPrice,closeReason};
+}
+
+async function currentMark(asset:string){
+ const quant=await getQuantSignal(asset),ageMs=Date.now()-quant.generatedAt;
+ if(ageMs<0||ageMs>MAX_FEED_AGE_MS)throw new Error(`Live ${asset} market feed is stale`);
+ return {price:quant.entry,generatedAt:quant.generatedAt,source:quant.source};
+}
+
 async function evaluateRisk(email:string,displayName:string,body:Record<string,unknown>){
  const amount=Number(body.amount),asset=String(body.asset||"").toUpperCase(),quant=await getQuantSignal(asset),entryPrice=quant.entry,stopPrice=Number(body.stopPrice),targetPrice=Number(body.targetPrice),confidence=quant.confidence,side=body.side==="SELL"?"SELL":"BUY";
  const now=Date.now(),reviewedEntry=Number(body.entryPrice),reviewedAt=Number(body.signalGeneratedAt);
@@ -48,24 +68,29 @@ async function evaluateRisk(email:string,displayName:string,body:Record<string,u
 export async function POST(request:Request){
  const user=await getUser();if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
  const body=await request.json();
+ if(body.action==="sync"){
+  await ensurePaperAccount(user.email,user.displayName);const db=getDb(),openTrades=(await listPaperTrades(user.email)).filter(item=>item.status==="open"),marks:Record<string,{price:number;generatedAt:number;source:string}>={},closed:Array<{id:string;pnlPaise:number;exitPrice:number;closeReason:string}>=[];
+  try{
+   for(const trade of openTrades){
+    const mark=marks[trade.asset]||(marks[trade.asset]=await currentMark(trade.asset));
+    const stopHit=trade.side==="SELL"?mark.price>=trade.stopPrice:mark.price<=trade.stopPrice;
+    const targetHit=trade.side==="SELL"?mark.price<=trade.targetPrice:mark.price>=trade.targetPrice;
+    if(stopHit||targetHit){const result=await settleOpenTrade(user.email,trade.id,mark.price,stopHit?"stop_loss":"take_profit");if(result)closed.push(result)}
+   }
+  }catch(reason){return NextResponse.json({error:reason instanceof Error?reason.message:"Live position sync unavailable"},{status:503})}
+  const [account]=await db.select().from(paperAccounts).where(eq(paperAccounts.userEmail,user.email)).limit(1);
+  return NextResponse.json({ok:true,trades:await listPaperTrades(user.email),marks,closed,balancePaise:account.balancePaise});
+ }
  if(body.action==="close"){
-  const exitPrice=Number(body.exitPrice),id=String(body.id||"");
-  if(!id||!Number.isFinite(exitPrice)||exitPrice<=0)return NextResponse.json({error:"Invalid paper exit"},{status:400});
+  const id=String(body.id||"");
+  if(!id)return NextResponse.json({error:"Invalid paper exit"},{status:400});
   await ensurePaperAccount(user.email,user.displayName);const db=getDb();
   const [trade]=await db.select().from(paperTrades).where(and(eq(paperTrades.id,id),eq(paperTrades.userEmail,user.email))).limit(1);
   if(!trade||trade.status!=="open")return NextResponse.json({error:"Open paper position not found"},{status:404});
-  const direction=trade.side==="SELL"?-1:1,rawPnl=trade.amountPaise*((exitPrice-trade.entryPrice)/trade.entryPrice)*direction;
-  const pnlPaise=Math.max(-trade.amountPaise,Math.round(rawPnl)),settlementPaise=trade.amountPaise+pnlPaise,now=Date.now();
-  try{
-   await db.transaction(async(tx)=>{
-    const [closed]=await tx.update(paperTrades).set({status:"closed",pnlPaise,exitPrice,closedAt:now}).where(and(eq(paperTrades.id,id),eq(paperTrades.userEmail,user.email),eq(paperTrades.status,"open"))).returning({id:paperTrades.id});
-    if(!closed)throw new Error("POSITION_CHANGED");
-    const [credited]=await tx.update(paperAccounts).set({balancePaise:sql`${paperAccounts.balancePaise} + ${settlementPaise}`,updatedAt:now}).where(eq(paperAccounts.userEmail,user.email)).returning({userEmail:paperAccounts.userEmail});
-    if(!credited)throw new Error("ACCOUNT_MISSING");
-   });
-  }catch{return NextResponse.json({error:"Paper position changed before settlement. Refresh and try again."},{status:409})}
+  let result;try{const mark=await currentMark(trade.asset);result=await settleOpenTrade(user.email,id,mark.price,"manual")}catch(reason){return NextResponse.json({error:reason instanceof Error?reason.message:"Paper position changed before settlement. Refresh and try again."},{status:409})}
+  if(!result)return NextResponse.json({error:"Open paper position not found"},{status:404});
   const [updatedAccount]=await db.select().from(paperAccounts).where(eq(paperAccounts.userEmail,user.email)).limit(1);
-  return NextResponse.json({ok:true,id,pnlPaise,balancePaise:updatedAccount.balancePaise});
+  return NextResponse.json({ok:true,...result,balancePaise:updatedAccount.balancePaise});
  }
  let evaluation;try{evaluation=await evaluateRisk(user.email,user.displayName,body)}catch(reason){return NextResponse.json({error:reason instanceof Error?reason.message:"Quant signal engine unavailable"},{status:503})}
  if(body.action==="validate")return NextResponse.json(evaluation);

@@ -1,0 +1,1 @@
+ALTER TABLE `paper_trades` ADD `close_reason` text;
