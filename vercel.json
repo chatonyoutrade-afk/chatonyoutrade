@@ -2,5 +2,11 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "npm ci --no-audit --no-fund",
-  "buildCommand": "node scripts/migrate-turso.mjs && npx next build"
+  "buildCommand": "node scripts/migrate-turso.mjs && npx next build",
+  "crons": [
+    {
+      "path": "/api/cron/paper-bots",
+      "schedule": "0 4 * * *"
+    }
+  ]
 }

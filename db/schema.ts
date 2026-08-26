@@ -93,6 +93,22 @@ export const paperBots = sqliteTable("paper_bots", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const paperBotAlerts = sqliteTable("paper_bot_alerts", {
+  id: text("id").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  asset: text("asset").notNull(),
+  decision: text("decision").notNull(),
+  confidence: integer("confidence").notNull(),
+  periodKey: text("period_key").notNull(),
+  status: text("status").notNull().default("queued"),
+  providerReference: text("provider_reference"),
+  createdAt: integer("created_at").notNull(),
+  sentAt: integer("sent_at"),
+}, (table) => [
+  uniqueIndex("idx_paper_bot_alerts_dedupe").on(table.userEmail, table.asset, table.decision, table.periodKey),
+  index("idx_paper_bot_alerts_user_created").on(table.userEmail, table.createdAt),
+]);
+
 export const paperTrades = sqliteTable("paper_trades", {
   id: text("id").primaryKey(),
   userEmail: text("user_email").notNull(),

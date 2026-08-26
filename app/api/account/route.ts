@@ -4,13 +4,15 @@ import { getUser } from "../../auth";
 import { getDb } from "../../../db";
 import { ensurePaperAccount, listPaperTrades, resetPaperAccount } from "../../../db/paper-account";
 import { paperAccounts, paperSettings } from "../../../db/schema";
+import { mailerStatus } from "../../../lib/mailer";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(){
  const user=await getUser(); if(!user)return NextResponse.json({error:"Authentication required"},{status:401});
  const {account,settings}=await ensurePaperAccount(user.email,user.displayName); const trades=await listPaperTrades(user.email);
- return NextResponse.json({user,account:{...account,balance:account.balancePaise/100,startingBalance:account.startingBalancePaise/100},settings:{...settings,capital:settings.capitalPaise/100},trades});
+ const email=mailerStatus();
+ return NextResponse.json({user,account:{...account,balance:account.balancePaise/100,startingBalance:account.startingBalancePaise/100},settings:{...settings,capital:settings.capitalPaise/100},trades,notifications:{emailConfigured:email.configured}});
 }
 
 export async function POST(request:Request){

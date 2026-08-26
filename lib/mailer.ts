@@ -35,19 +35,25 @@ export function appOrigin(request: Request) {
   return new URL(request.url).origin;
 }
 
-// Returns false rather than throwing: a caller decides whether an undelivered
-// message is fatal, and no caller should leak provider errors to the browser.
-export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+// Returns a delivery result rather than throwing: callers decide whether an
+// undelivered message is fatal, without leaking provider errors to the browser.
+export async function sendMailWithResult(to: string, subject: string, text: string): Promise<{ sent: boolean; id: string | null }> {
   const status = mailerStatus();
-  if (!status.configured) return false;
+  if (!status.configured) return { sent: false, id: null };
   try {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey()}`, "content-type": "application/json" },
       body: JSON.stringify({ from: fromAddress(), to, subject, text }),
     });
-    return response.ok;
+    if (!response.ok) return { sent: false, id: null };
+    const result = await response.json().catch(() => null) as { id?: unknown } | null;
+    return { sent: true, id: typeof result?.id === "string" ? result.id : null };
   } catch {
-    return false;
+    return { sent: false, id: null };
   }
+}
+
+export async function sendMail(to: string, subject: string, text: string): Promise<boolean> {
+  return (await sendMailWithResult(to, subject, text)).sent;
 }
