@@ -61,6 +61,7 @@ export async function scanActivePaperBots() {
           userEmail: bot.userEmail,
           asset: signal.asset,
           decision: signal.signal,
+          decisionId,
           confidence: signal.confidence,
           periodKey: utcPeriodKey(),
           status: "queued",
@@ -80,7 +81,7 @@ export async function scanActivePaperBots() {
           "",
           signal.reasons.slice(0, 3).join(" · "),
           "",
-          "Review the signal: https://chatonyou.com/trade/ai",
+          `Review the saved decision: https://chatonyou.com/trade/ai/decision?id=${encodeURIComponent(decisionId)}`,
           "Paper mode only. No real order was placed. Crypto is high risk and results are not guaranteed.",
         ].filter(Boolean).join("\n");
         const delivery = await sendMailWithResult(bot.userEmail, `[Paper alert] ${signal.signal} ${signal.asset}/USDT · ${signal.confidence}%`, lines);
