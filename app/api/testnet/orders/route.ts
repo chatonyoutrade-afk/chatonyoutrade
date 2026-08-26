@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
-import { getChatGPTUser } from "../../../chatgpt-auth";
+import { getUser } from "../../../auth";
 import { getDb } from "../../../../db";
 import { ensurePaperAccount } from "../../../../db/paper-account";
 import { exchangeConnections, testnetOrders, tradingEvents } from "../../../../db/schema";
 import { closeTestnetPosition, getBinanceTestnetAccount, placeProtectedTestnetBuy, queryTestnetOrder, queryTestnetOrderList, SAFE_TESTNET_QUOTE_MIN } from "../../../../lib/binance-testnet";
 import { decryptCredentials } from "../../../../lib/credential-vault";
 import { getQuantSignal } from "../../../../lib/quant-signal";
+import { notifyTestnetClosed, notifyTestnetOpened, notifyTestnetRejected } from "../../../../lib/testnet-notifications";
 
 export const dynamic = "force-dynamic";
 const allowedAssets = new Set(["BTC", "ETH", "SOL", "BNB"]);
@@ -60,12 +61,13 @@ async function syncProtection(userEmail: string) {
       const filled = reports.find((order) => order.status === "FILLED"), quantity = Number(filled?.executedQty || 0), quote = Number(filled?.cummulativeQuoteQty || 0), exitPrice = quantity > 0 ? quote / quantity : item.targetPrice, pnlQuote = (exitPrice - item.entryPrice) * item.quantity;
       await db.update(testnetOrders).set({ status: "closed", binanceStatus: "FILLED", exitPrice, pnlQuote, closedAt: Date.now(), updatedAt: Date.now() }).where(and(eq(testnetOrders.id, item.id), eq(testnetOrders.userEmail, userEmail)));
       await logEvent(userEmail, "testnet", "PROTECTIVE_EXIT", `${item.asset} protection closed at ${exitPrice.toFixed(4)} USDT`, item.id);
+      await notifyTestnetClosed({ id: item.id, email: userEmail, asset: item.asset, exitPrice, pnlQuote, reason: "protection" });
     } catch { /* A later refresh will retry without changing the local position. */ }
   }
 }
 
 export async function GET(request: Request) {
-  const user = await getChatGPTUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const user = await getUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   if (new URL(request.url).searchParams.get("sync") === "1") await syncProtection(user.email);
   const db = getDb(), orders = await db.select().from(testnetOrders).where(eq(testnetOrders.userEmail, user.email)).orderBy(desc(testnetOrders.createdAt)).limit(50), events = await db.select().from(tradingEvents).where(eq(tradingEvents.userEmail, user.email)).orderBy(desc(tradingEvents.createdAt)).limit(80), { settings } = await ensurePaperAccount(user.email, user.displayName);
   const closed = orders.filter((item) => item.status === "closed"), pnl = closed.reduce((sum, item) => sum + item.pnlQuote, 0), wins = closed.filter((item) => item.pnlQuote > 0).length;
@@ -73,7 +75,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = await getChatGPTUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const user = await getUser(); if (!user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const body = await request.json().catch(() => ({})) as Record<string, unknown>, action = String(body.action || "validate"), db = getDb();
   try {
     if (action === "close") {
@@ -83,6 +85,7 @@ export async function POST(request: Request) {
       const sold = Number(result.order.executedQty), quote = Number(result.order.cummulativeQuoteQty), exitPrice = sold > 0 ? quote / sold : 0, pnlQuote = quote - order.quoteAmount - result.rescueQuoteCost, now = Date.now();
       await db.update(testnetOrders).set({ status: "closed", binanceStatus: result.order.status, exitPrice, pnlQuote, closedAt: now, updatedAt: now }).where(and(eq(testnetOrders.id, id), eq(testnetOrders.userEmail, user.email)));
       await logEvent(user.email, "testnet", result.rescueQuoteCost > 0 ? "DUST_RESCUE_CLOSE" : "MANUAL_CLOSE", `${order.asset} closed at ${exitPrice.toFixed(4)} USDT${result.rescueQuoteCost > 0 ? ` after ${result.rescueQuoteCost.toFixed(2)} USDT Testnet dust rescue` : ""}`, id);
+      await notifyTestnetClosed({ id, email: user.email, asset: order.asset, exitPrice, pnlQuote, reason: "manual" });
       return NextResponse.json({ ok: true, exitPrice, pnlQuote, rescued: result.rescueQuoteCost > 0 });
     }
     const evaluation = await evaluate(user.email, user.displayName, body);
@@ -97,6 +100,7 @@ export async function POST(request: Request) {
       const status = placed.protection ? "protected" : placed.entry.status === "FILLED" ? "unprotected" : "open";
       await db.update(testnetOrders).set({ status, binanceStatus: placed.entry.status, binanceOrderId: String(placed.entry.orderId), protectionOrderListId: placed.protection ? String(placed.protection.orderListId) : null, quantity: placed.protectedQuantity || Number(placed.entry.executedQty || 0), entryPrice: placed.entryPrice || evaluation.quant.entry, error: placed.warning, updatedAt: Date.now() }).where(eq(testnetOrders.id, id));
       await logEvent(user.email, "testnet", action === "auto" ? "AI_AUTO_ENTRY" : "MANUAL_ENTRY", `${evaluation.asset} ${evaluation.quoteAmount.toFixed(2)} USDT · ${status}`, id);
+      await notifyTestnetOpened({ id, email: user.email, asset: evaluation.asset, quoteAmount: evaluation.quoteAmount, entryPrice: placed.entryPrice || evaluation.quant.entry, stopPrice: evaluation.stopPrice, targetPrice: evaluation.targetPrice, protected: Boolean(placed.protection) });
       const refreshed = await getBinanceTestnetAccount(evaluation.credentials.apiKey, evaluation.credentials.apiSecret);
       await db.update(exchangeConnections).set({ balances: JSON.stringify(refreshed.balances), lastCheckedAt: Date.now() }).where(eq(exchangeConnections.userEmail, user.email));
       return NextResponse.json({ ok: true, id, status, warning: placed.warning });
@@ -104,6 +108,7 @@ export async function POST(request: Request) {
       const message = reason instanceof Error ? reason.message : "Testnet order failed";
       await db.update(testnetOrders).set({ status: "rejected", binanceStatus: "REJECTED", error: message, updatedAt: Date.now() }).where(eq(testnetOrders.id, id));
       await logEvent(user.email, "risk", "ORDER_REJECTED", message, id);
+      await notifyTestnetRejected({ id, email: user.email, asset: evaluation.asset, reason: message });
       return NextResponse.json({ error: message, id }, { status: 400 });
     }
   } catch (reason) { return NextResponse.json({ error: reason instanceof Error ? reason.message : "Testnet execution unavailable" }, { status: 400 }); }
