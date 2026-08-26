@@ -5,6 +5,7 @@ import { getDb } from "../../../db";
 import { ensurePaperAccount, listPaperTrades } from "../../../db/paper-account";
 import { paperAccounts, paperSettings, paperTrades } from "../../../db/schema";
 import { getQuantSignal } from "../../../lib/quant-signal";
+import { notifyPaperTradeClosed,notifyPaperTradeOpened } from "../../../lib/trade-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ async function settleOpenTrade(email:string,id:string,exitPrice:number,closeReas
   const [credited]=await tx.update(paperAccounts).set({balancePaise:sql`${paperAccounts.balancePaise} + ${settlementPaise}`,updatedAt:now}).where(eq(paperAccounts.userEmail,email)).returning({userEmail:paperAccounts.userEmail});
   if(!credited)throw new Error("ACCOUNT_MISSING");
  });
+ await notifyPaperTradeClosed({id,email,asset:trade.asset,side:trade.side,pnlPaise,exitPrice,closeReason});
  return {id,pnlPaise,exitPrice,closeReason};
 }
 
@@ -107,6 +109,7 @@ export async function POST(request:Request){
    await tx.insert(paperTrades).values({id,userEmail:user.email,asset,side,amountPaise,entryPrice,stopPrice,targetPrice,status:"open",pnlPaise:0,createdAt:now});
   });
  }catch{return NextResponse.json({error:"Balance or position limits changed. Refresh and validate the order again."},{status:409})}
+ await notifyPaperTradeOpened({id,email:user.email,asset,side,amountPaise,entryPrice,stopPrice,targetPrice,confidence:evaluation.confidence});
  const [updatedAccount]=await getDb().select().from(paperAccounts).where(eq(paperAccounts.userEmail,user.email)).limit(1);
  return NextResponse.json({ok:true,id,balancePaise:updatedAccount.balancePaise});
 }
