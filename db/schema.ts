@@ -78,6 +78,21 @@ export const paperSettings = sqliteTable("paper_settings", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const paperBots = sqliteTable("paper_bots", {
+  userEmail: text("user_email").primaryKey(),
+  name: text("name").notNull(),
+  strategy: text("strategy").notNull(),
+  coins: text("coins").notNull().default("[]"),
+  timeframe: text("timeframe").notNull().default("15m"),
+  minConfidence: integer("min_confidence").notNull().default(80),
+  riskPct: real("risk_pct").notNull().default(1),
+  dailyLossPct: real("daily_loss_pct").notNull().default(3),
+  active: integer("active", { mode: "boolean" }).notNull().default(false),
+  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
+
 export const paperTrades = sqliteTable("paper_trades", {
   id: text("id").primaryKey(),
   userEmail: text("user_email").notNull(),
