@@ -261,6 +261,19 @@ export const complianceEvidence = sqliteTable("compliance_evidence", {
   index("idx_compliance_evidence_status_expiry").on(table.status, table.expiresAt),
 ]);
 
+export const readinessDrills = sqliteTable("readiness_drills", {
+  id: text("id").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  status: text("status").notNull(),
+  automaticChecks: text("automatic_checks").notNull().default("[]"),
+  manualChecks: text("manual_checks").notNull().default("[]"),
+  note: text("note").notNull(),
+  conductedBy: text("conducted_by").notNull(),
+  conductedAt: integer("conducted_at").notNull(),
+}, (table) => [
+  index("idx_readiness_drills_user_conducted").on(table.userEmail, table.conductedAt),
+]);
+
 // Failed-attempt counters for sign-in and registration. Keyed by email and by
 // client IP separately, so one attacker cannot spray many emails from one
 // address and one email cannot be locked out from many addresses cheaply.

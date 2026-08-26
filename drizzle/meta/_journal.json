@@ -120,6 +120,13 @@
       "when": 1787730890992,
       "tag": "0016_thick_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1787731412513,
+      "tag": "0017_mature_stardust",
+      "breakpoints": true
     }
   ]
 }

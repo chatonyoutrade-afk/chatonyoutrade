@@ -6,6 +6,7 @@ import "./public-info.css";
 import "./kyc.css";
 import "./kyc-status.css";
 import "./admin-kyc.css";
+import "./readiness-drill.css";
 import "./first-trade.css";
 import "./notifications.css";
 import "./support.css";
