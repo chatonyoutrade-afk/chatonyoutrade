@@ -116,3 +116,4 @@
 .order-feed-banner.notice b{color:#ccd2ff}
 .order-feed-banner.notice small{color:#9298bd}
 .order-level-inputs input:disabled{opacity:.45;cursor:not-allowed}
+.testnet-history-link{display:flex;align-items:center;justify-content:center;min-height:43px;border:1px dashed #3a2c23;border-radius:10px;color:#ff9a52;text-decoration:none;font-size:11px;font-weight:750}.testnet-history-link:hover{background:#17100b}
