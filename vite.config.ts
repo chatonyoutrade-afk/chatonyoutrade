@@ -15,6 +15,7 @@ const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
   vars: {
+    EXCHANGE_VAULT_KEY: process.env.EXCHANGE_VAULT_KEY ?? "",
     KYC_ADMIN_EMAILS: process.env.KYC_ADMIN_EMAILS ?? "",
     KYC_PROVIDER: process.env.KYC_PROVIDER ?? "",
     KYC_PROVIDER_MODE: process.env.KYC_PROVIDER_MODE ?? "",
