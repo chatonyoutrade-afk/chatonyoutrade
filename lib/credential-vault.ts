@@ -14,8 +14,9 @@ function base64ToBytes(value: string) {
 }
 
 async function vaultKey() {
-  const secret = (env as unknown as Record<string, unknown>).EXCHANGE_VAULT_KEY;
-  if (typeof secret !== "string" || !secret) {
+  const workerValue = (env as unknown as Record<string, unknown>).EXCHANGE_VAULT_KEY;
+  const secret = (typeof workerValue === "string" ? workerValue : process.env.EXCHANGE_VAULT_KEY ?? "").trim();
+  if (!secret) {
     throw new Error("Secure credential vault is not configured");
   }
   const raw = base64ToBytes(secret);
